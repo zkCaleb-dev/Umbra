@@ -84,6 +84,30 @@ with kinds `spp-pool`, `spp-registry`, `spp-asp-membership`,
 `spp-asp-non-membership`, `token` (SEP-41/SAC transfer decoding), or
 `raw` (store any contract's events, served at /v1/contracts/:id/events).
 
+## Why this exists
+
+Every serious privacy chain ends up needing a specialized data layer
+between the chain and its wallets — Bitcoin has Electrum servers, Zcash
+has lightwalletd. Privacy wallets are blind by design: balances live in
+encrypted blobs that only the owner can open, so a wallet must download
+the *complete* event history of its protocol to find its notes, rebuild
+the commitment tree and know what is spent. RPC nodes keep ~7 days.
+That layer did not exist for Stellar's new privacy stack. Umbra is it.
+
+General-purpose indexers can't credibly serve this niche: their business
+model is metered, authenticated queries — and for a privacy wallet the
+API key *is* your identity and your query pattern *is* your notes.
+Umbra inverts that: anonymous range downloads, no client logs, and
+self-hosting as a first-class path. Storage stays trivial by design —
+indexing a protocol's contracts from their deployment ledger means even
+a wildly successful pool measures in low gigabytes, not terabytes.
+
+**Sustainability**: the public instance and the code are free ecosystem
+infrastructure. The intended model is boring and proven — hosted SLA
+tiers and dedicated verifiable instances for wallet teams, and
+self-hosted deployment support for enterprises running confidential
+tokens, who will never query a third party for their balances.
+
 ## Design
 
 One goroutine drives the pipeline: fetch ledger → keep only events of
