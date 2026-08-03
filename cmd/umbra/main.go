@@ -44,6 +44,14 @@ func run() error {
 	}
 	defer st.Close()
 
+	// `umbra rederive` rebuilds every derived table from the raw event
+	// log and exits — run it after adding or fixing a decoder.
+	if len(os.Args) > 1 && os.Args[1] == "rederive" {
+		return ingest.Rederive(ctx, ingest.RederiveConfig{
+			Store: st, Network: cfg.Network, Kinds: cfg.ContractKinds(),
+		})
+	}
+
 	ing := ingest.New(cfg, st)
 	srv := api.New(cfg, st, ing)
 

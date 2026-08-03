@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/zkCaleb-dev/umbra/internal/config"
-	"github.com/zkCaleb-dev/umbra/internal/decode"
 	"github.com/zkCaleb-dev/umbra/internal/extract"
 	"github.com/zkCaleb-dev/umbra/internal/store"
 
@@ -28,12 +27,12 @@ const progressLogEvery = 1000
 
 // Status is a snapshot for /v1/status, maintained by the loop.
 type Status struct {
-	LastLedger     uint32    `json:"last_ledger"`
-	LastLedgerHash string    `json:"last_ledger_hash"`
-	LastClosedAt   time.Time `json:"last_ledger_closed_at"`
-	ProtocolVersion uint32   `json:"protocol_version"`
-	Endpoint       string    `json:"rpc_endpoint"` // host only, no credentials
-	UpdatedAt      time.Time `json:"updated_at"`
+	LastLedger      uint32    `json:"last_ledger"`
+	LastLedgerHash  string    `json:"last_ledger_hash"`
+	LastClosedAt    time.Time `json:"last_ledger_closed_at"`
+	ProtocolVersion uint32    `json:"protocol_version"`
+	Endpoint        string    `json:"rpc_endpoint"` // host only, no credentials
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // Ingester runs the ledger loop.
@@ -86,6 +85,12 @@ func (i *Ingester) Run(ctx context.Context) error {
 		return err
 	}
 	slog.Info("ingestion starting", "from_ledger", start, "contracts", len(i.watched))
+
+	// Contracts added after the fact get their missing history via
+	// bounded background jobs; the live loop is never blocked by them.
+	for _, job := range i.reconcileCoverage(ctx, start) {
+		go job(ctx)
+	}
 
 	endpointIdx := 0
 	// coldFailures counts consecutive endpoints that could not serve even
@@ -213,26 +218,10 @@ func (i *Ingester) processLedger(ctx context.Context, meta xdr.LedgerCloseMeta) 
 		return fmt.Errorf("extracting ledger %d: %w", meta.LedgerSequence(), err)
 	}
 
-	rows := make([]store.RawEvent, 0, len(events))
-	for idx := range events {
-		ev := &events[idx]
-		topics, err := ev.TopicsJSON()
-		if err != nil {
-			return fmt.Errorf("rendering topics of %s: %w", ev.ID, err)
-		}
-		data, err := ev.DataJSON()
-		if err != nil {
-			return fmt.Errorf("rendering data of %s: %w", ev.ID, err)
-		}
-		rows = append(rows, store.RawEvent{
-			ID: ev.ID, Ledger: ev.Ledger, LedgerClosedAt: ev.LedgerClosedAt,
-			TxHash: ev.TxHash, TxIndex: ev.TxIndex, EventIndex: ev.EventIndex,
-			ContractID: ev.ContractID, Name: ev.Name,
-			TopicsJSON: topics, DataJSON: data, RawXDR: ev.RawXDR,
-		})
+	rows, derived, err := i.renderRows(events)
+	if err != nil {
+		return err
 	}
-
-	derived := decode.Derive(i.kinds, events)
 	seq := meta.LedgerSequence()
 	if err := i.st.WriteLedger(ctx, i.cfg.Network, seq, meta.LedgerHash().HexString(), rows, derived); err != nil {
 		return fmt.Errorf("committing ledger %d: %w", seq, err)

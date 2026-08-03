@@ -180,6 +180,44 @@ func (s *Store) WriteLedger(ctx context.Context, network string, ledger uint32,
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after commit
 
+	if err := writeRowsTx(ctx, tx, network, events, d); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO cursor (network, last_ledger, last_ledger_hash, updated_at)
+		VALUES ($1,$2,$3,now())
+		ON CONFLICT (network) DO UPDATE
+		SET last_ledger = EXCLUDED.last_ledger,
+		    last_ledger_hash = EXCLUDED.last_ledger_hash,
+		    updated_at = now()`,
+		network, int64(ledger), ledgerHash); err != nil {
+		return fmt.Errorf("advancing cursor: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("committing ledger %d: %w", ledger, err)
+	}
+	return nil
+}
+
+// writeRows persists events + derived rows in their own transaction,
+// leaving the cursor alone (backfill / re-derivation write path).
+func (s *Store) writeRows(ctx context.Context, network string, events []RawEvent, d Derived) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("beginning rows tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := writeRowsTx(ctx, tx, network, events, d); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("committing rows: %w", err)
+	}
+	return nil
+}
+
+// writeRowsTx runs the idempotent inserts inside the caller's tx.
+func writeRowsTx(ctx context.Context, tx pgx.Tx, network string, events []RawEvent, d Derived) error {
 	for _, ev := range events {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO events (id, network, ledger, ledger_closed_at, tx_hash,
@@ -228,19 +266,6 @@ func (s *Store) WriteLedger(ctx context.Context, network string, ledger uint32,
 			t.EventID, t.TokenID, int64(t.Ledger), t.TxHash, t.From, t.To, t.Amount); err != nil {
 			return fmt.Errorf("inserting transfer %s: %w", t.EventID, err)
 		}
-	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO cursor (network, last_ledger, last_ledger_hash, updated_at)
-		VALUES ($1,$2,$3,now())
-		ON CONFLICT (network) DO UPDATE
-		SET last_ledger = EXCLUDED.last_ledger,
-		    last_ledger_hash = EXCLUDED.last_ledger_hash,
-		    updated_at = now()`,
-		network, int64(ledger), ledgerHash); err != nil {
-		return fmt.Errorf("advancing cursor: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("committing ledger %d: %w", ledger, err)
 	}
 	return nil
 }
