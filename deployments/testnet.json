@@ -43,6 +43,12 @@
       "kind": "token",
       "start_ledger": 3899359,
       "label": "USDC (SAC) — Circle testnet USDC"
+    },
+    {
+      "id": "CBF64DEOVQAXJFBSNGFEUT2AH4H7K5JBY3ZYJ5GVEINMNSDISWRG5N3F",
+      "kind": "confidential-token",
+      "start_ledger": 3836000,
+      "label": "Confidential Token — official OpenZeppelin demo"
     }
   ]
 }
