@@ -1,4 +1,4 @@
-module github.com/Trustless-Work/umbra
+module github.com/zkCaleb-dev/umbra
 
 go 1.25.0
 

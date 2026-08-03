@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Trustless-Work/umbra/internal/config"
-	"github.com/Trustless-Work/umbra/internal/ingest"
-	"github.com/Trustless-Work/umbra/internal/store"
+	"github.com/zkCaleb-dev/umbra/internal/config"
+	"github.com/zkCaleb-dev/umbra/internal/ingest"
+	"github.com/zkCaleb-dev/umbra/internal/store"
 )
 
 const (

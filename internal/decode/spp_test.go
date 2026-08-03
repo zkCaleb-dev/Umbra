@@ -3,8 +3,8 @@ package decode
 import (
 	"testing"
 
-	"github.com/Trustless-Work/umbra/internal/config"
-	"github.com/Trustless-Work/umbra/internal/extract"
+	"github.com/zkCaleb-dev/umbra/internal/config"
+	"github.com/zkCaleb-dev/umbra/internal/extract"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
 )

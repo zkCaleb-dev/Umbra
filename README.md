@@ -38,7 +38,7 @@ encrypted outputs and the public-key registry.
 ## Quickstart
 
 ```bash
-git clone https://github.com/Trustless-Work/umbra
+git clone https://github.com/zkCaleb-dev/umbra
 cd umbra
 docker compose up --build -d
 curl localhost:8080/v1/status

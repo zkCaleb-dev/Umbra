@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/Trustless-Work/umbra/internal/config"
-	"github.com/Trustless-Work/umbra/internal/extract"
-	"github.com/Trustless-Work/umbra/internal/store"
+	"github.com/zkCaleb-dev/umbra/internal/config"
+	"github.com/zkCaleb-dev/umbra/internal/extract"
+	"github.com/zkCaleb-dev/umbra/internal/store"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
 )

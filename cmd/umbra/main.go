@@ -10,10 +10,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Trustless-Work/umbra/internal/api"
-	"github.com/Trustless-Work/umbra/internal/config"
-	"github.com/Trustless-Work/umbra/internal/ingest"
-	"github.com/Trustless-Work/umbra/internal/store"
+	"github.com/zkCaleb-dev/umbra/internal/api"
+	"github.com/zkCaleb-dev/umbra/internal/config"
+	"github.com/zkCaleb-dev/umbra/internal/ingest"
+	"github.com/zkCaleb-dev/umbra/internal/store"
 
 	"golang.org/x/sync/errgroup"
 )
