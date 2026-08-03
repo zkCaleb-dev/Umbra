@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zkCaleb-dev/umbra/internal/config"
@@ -38,11 +39,26 @@ type Server struct {
 	cfg *config.Config
 	st  *store.Store
 	ing *ingest.Ingester
+
+	cpMu    sync.Mutex
+	cpCache map[string]cachedCheckpoint
 }
+
+// cachedCheckpoint memoizes a pool's verification verdict. Recomputing
+// the root is O(leaves) plus two RPC round trips, so serving it
+// uncached on a public endpoint would be a denial-of-service surface.
+// A verdict stays valid while the leaf set is unchanged and young.
+type cachedCheckpoint struct {
+	leafCount int
+	at        time.Time
+	cp        *verify.Checkpoint
+}
+
+const checkpointTTL = 60 * time.Second
 
 // New builds the server.
 func New(cfg *config.Config, st *store.Store, ing *ingest.Ingester) *Server {
-	return &Server{cfg: cfg, st: st, ing: ing}
+	return &Server{cfg: cfg, st: st, ing: ing, cpCache: map[string]cachedCheckpoint{}}
 }
 
 // Run serves until ctx is done.
@@ -185,6 +201,13 @@ func (s *Server) servePage(w http.ResponseWriter, r *http.Request, includeOutput
 		s.fail(w, "querying leaves", err)
 		return
 	}
+	// A full page of an append-only stream is immutable forever: let
+	// CDNs and clients cache it. Partial pages are still growing.
+	if page.NextIndex != nil {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	s.ok(w, page)
 }
 
@@ -281,6 +304,16 @@ func (s *Server) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "loading leaves", err)
 		return
 	}
+
+	s.cpMu.Lock()
+	if c, hit := s.cpCache[poolID]; hit && c.leafCount == len(commitments) &&
+		time.Since(c.at) < checkpointTTL {
+		s.cpMu.Unlock()
+		s.ok(w, c.cp)
+		return
+	}
+	s.cpMu.Unlock()
+
 	leaves := make([]*big.Int, len(commitments))
 	for i, c := range commitments {
 		n, ok := new(big.Int).SetString(strings.TrimPrefix(c, "0x"), 16)
@@ -290,11 +323,21 @@ func (s *Server) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
 		}
 		leaves[i] = n
 	}
-	cp, err := verify.Verify(r.Context(), s.cfg.RPCURLs[0], poolID, leaves)
+	// Try the whole RPC pool, not just the primary.
+	var cp *verify.Checkpoint
+	for _, rpcURL := range s.cfg.RPCURLs {
+		cp, err = verify.Verify(r.Context(), rpcURL, poolID, leaves)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		s.fail(w, "verifying checkpoint", err)
 		return
 	}
+	s.cpMu.Lock()
+	s.cpCache[poolID] = cachedCheckpoint{leafCount: len(commitments), at: time.Now(), cp: cp}
+	s.cpMu.Unlock()
 	s.ok(w, cp)
 }
 

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/zkCaleb-dev/umbra/internal/config"
@@ -42,7 +43,9 @@ type Ingester struct {
 	watched map[string]struct{}
 	kinds   map[string]config.ContractKind
 
-	statusCh chan Status // latest-wins snapshot for the API
+	mu        sync.RWMutex
+	status    Status
+	statusSet bool
 }
 
 // New builds an Ingester.
@@ -52,41 +55,26 @@ func New(cfg *config.Config, st *store.Store) *Ingester {
 	for id := range kinds {
 		watched[id] = struct{}{}
 	}
-	ing := &Ingester{
-		cfg:      cfg,
-		st:       st,
-		watched:  watched,
-		kinds:    kinds,
-		statusCh: make(chan Status, 1),
+	return &Ingester{
+		cfg:     cfg,
+		st:      st,
+		watched: watched,
+		kinds:   kinds,
 	}
-	return ing
 }
 
-// Status returns the latest published snapshot, if any.
+// Status returns the latest published snapshot, if any. Safe for any
+// number of concurrent readers.
 func (i *Ingester) Status() (Status, bool) {
-	select {
-	case s := <-i.statusCh:
-		// Put it back for the next reader.
-		i.publishStatus(s)
-		return s, true
-	default:
-		return Status{}, false
-	}
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.status, i.statusSet
 }
 
 func (i *Ingester) publishStatus(s Status) {
-	select {
-	case i.statusCh <- s:
-	default:
-		select { // replace the stale snapshot
-		case <-i.statusCh:
-		default:
-		}
-		select {
-		case i.statusCh <- s:
-		default:
-		}
-	}
+	i.mu.Lock()
+	i.status, i.statusSet = s, true
+	i.mu.Unlock()
 }
 
 // Run ingests ledgers until ctx is done. On backend errors it rotates
