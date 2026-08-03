@@ -54,6 +54,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /v1/registry/{address}", s.handleRegistry)
 	mux.HandleFunc("GET /v1/contracts/{id}/events", s.handleEvents)
 	mux.HandleFunc("GET /v1/tokens/{id}/transfers", s.handleTransfers)
+	// Bootnode-compatible JSON-RPC surface (see jsonrpc.go).
+	mux.HandleFunc("POST /{$}", s.handleJSONRPC)
 
 	srv := &http.Server{
 		Addr:              s.cfg.APIBind,

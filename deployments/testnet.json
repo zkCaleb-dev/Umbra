@@ -37,6 +37,12 @@
       "kind": "token",
       "start_ledger": 3899361,
       "label": "EURC (SAC) — backs the SPP EURC pool"
+    },
+    {
+      "id": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+      "kind": "token",
+      "start_ledger": 3899359,
+      "label": "USDC (SAC) — Circle testnet USDC"
     }
   ]
 }

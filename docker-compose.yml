@@ -11,6 +11,7 @@ services:
       DATABASE_URL: postgres://umbra:umbra@postgres:5432/umbra?sslmode=disable
       UMBRA_DEPLOYMENTS: /deployments/${UMBRA_NETWORK:-testnet}.json
       UMBRA_GET_LEDGERS_LIMIT: ${UMBRA_GET_LEDGERS_LIMIT:-100}
+      UMBRA_HANDOFF_CUTOFF_LEDGERS: ${UMBRA_HANDOFF_CUTOFF_LEDGERS:-86400}
     ports:
       - "8080:8080"
 

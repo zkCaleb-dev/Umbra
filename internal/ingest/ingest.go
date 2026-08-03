@@ -30,6 +30,7 @@ type Status struct {
 	LastLedger     uint32    `json:"last_ledger"`
 	LastLedgerHash string    `json:"last_ledger_hash"`
 	LastClosedAt   time.Time `json:"last_ledger_closed_at"`
+	ProtocolVersion uint32   `json:"protocol_version"`
 	Endpoint       string    `json:"rpc_endpoint"` // host only, no credentials
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -207,11 +208,12 @@ func (i *Ingester) runOnEndpoint(ctx context.Context, rpcURL string, start *uint
 		}
 
 		i.publishStatus(Status{
-			LastLedger:     seq,
-			LastLedgerHash: hash,
-			LastClosedAt:   time.Unix(meta.ClosedAt().Unix(), 0).UTC(),
-			Endpoint:       endpointHost(rpcURL),
-			UpdatedAt:      time.Now().UTC(),
+			LastLedger:      seq,
+			LastLedgerHash:  hash,
+			LastClosedAt:    time.Unix(meta.ClosedAt().Unix(), 0).UTC(),
+			ProtocolVersion: uint32(meta.LedgerHeaderHistoryEntry().Header.LedgerVersion),
+			Endpoint:        endpointHost(rpcURL),
+			UpdatedAt:       time.Now().UTC(),
 		})
 	}
 }

@@ -70,6 +70,12 @@ type Config struct {
 	// LogClientIP opts INTO logging client addresses on the API. Off by
 	// default: sync patterns of privacy wallets are sensitive metadata.
 	LogClientIP bool `env:"UMBRA_LOG_CLIENT_IP" envDefault:"false"`
+	// HandoffCutoffLedgers is the bootnode handoff window: getEvents
+	// requests within this many ledgers of the tip get a -32002 handoff
+	// so wallets finish syncing on their own RPC. Default = 5 days of
+	// 5-second ledgers, matching the reference bootnode. 0 disables
+	// handoff (pure archive mode: Umbra serves everything it has).
+	HandoffCutoffLedgers uint32 `env:"UMBRA_HANDOFF_CUTOFF_LEDGERS" envDefault:"86400"`
 
 	Deployments Deployments `env:"-"`
 }
