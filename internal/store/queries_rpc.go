@@ -80,3 +80,23 @@ func (s *Store) Coverage(ctx context.Context, network string, configuredStart ui
 	}
 	return oldest, closedAt, nil
 }
+
+// AllLeafCommitments returns every leaf commitment of a pool in leaf
+// order, as decimal/hex strings ("0x..."), for root recomputation.
+func (s *Store) AllLeafCommitments(ctx context.Context, poolID string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT commitment FROM pool_leaves WHERE pool_id=$1 ORDER BY leaf_index`, poolID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}

@@ -11,14 +11,18 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/zkCaleb-dev/umbra/internal/config"
 	"github.com/zkCaleb-dev/umbra/internal/ingest"
 	"github.com/zkCaleb-dev/umbra/internal/store"
+	"github.com/zkCaleb-dev/umbra/internal/verify"
 )
 
 const (
@@ -58,6 +62,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /v1/registry/{address}", s.handleRegistry)
 	mux.HandleFunc("GET /v1/contracts/{id}/events", s.handleEvents)
 	mux.HandleFunc("GET /v1/tokens/{id}/transfers", s.handleTransfers)
+	mux.HandleFunc("GET /v1/pools/{id}/checkpoint", s.handleCheckpoint)
 	// Bootnode-compatible JSON-RPC surface (see jsonrpc.go).
 	mux.HandleFunc("POST /{$}", s.handleJSONRPC)
 	// Human-facing status page.
@@ -259,6 +264,38 @@ func (s *Server) watchedContract(id string) (config.ContractKind, bool) {
 		}
 	}
 	return "", false
+}
+
+// handleCheckpoint recomputes the pool's Merkle root from the indexed
+// leaves and compares it against the contract's current on-chain root —
+// the "don't trust, verify" endpoint. Both inputs are public: anyone can
+// repeat the computation from /leaves and getLedgerEntries.
+func (s *Server) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
+	poolID, ok := s.knownPool(r.PathValue("id"))
+	if !ok {
+		http.Error(w, "unknown pool", http.StatusNotFound)
+		return
+	}
+	commitments, err := s.st.AllLeafCommitments(r.Context(), poolID)
+	if err != nil {
+		s.fail(w, "loading leaves", err)
+		return
+	}
+	leaves := make([]*big.Int, len(commitments))
+	for i, c := range commitments {
+		n, ok := new(big.Int).SetString(strings.TrimPrefix(c, "0x"), 16)
+		if !ok {
+			s.fail(w, "parsing commitment", fmt.Errorf("bad commitment %q at leaf %d", c, i))
+			return
+		}
+		leaves[i] = n
+	}
+	cp, err := verify.Verify(r.Context(), s.cfg.RPCURLs[0], poolID, leaves)
+	if err != nil {
+		s.fail(w, "verifying checkpoint", err)
+		return
+	}
+	s.ok(w, cp)
 }
 
 // knownPool validates a path pool id against the configured spp-pool set

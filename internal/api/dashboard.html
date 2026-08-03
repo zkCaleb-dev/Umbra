@@ -109,7 +109,8 @@ async function refresh() {
       const complete = s.leaf_count === 0 || s.leaf_count === (s.max_leaf_index ?? -1) + 1;
       return `<div class="card">
         <div class="row"><span class="name">${p.label || 'pool'}</span>
-          <span class="${complete ? 'ok' : 'warn'}">${complete ? '✓ leaf sequence complete' : '⚠ leaf sequence has holes'}</span></div>
+          <span><span class="${complete ? 'ok' : 'warn'}">${complete ? '✓ leaf sequence complete' : '⚠ leaf sequence has holes'}</span>
+          · <span id="cp-${p.id}" class="warn">verifying root…</span></span></div>
         <div class="id">${p.id}</div>
         <div class="stats">
           <div class="s"><div class="k">Commitment leaves</div><div class="v">${fmt(s.leaf_count ?? 0)}</div></div>
@@ -118,6 +119,18 @@ async function refresh() {
         </div>
       </div>`;
     }).join('') || '<div class="card">no pools configured</div>';
+
+    // Cryptographic checkpoint per pool: recomputed Poseidon2 root vs the
+    // contract's on-chain root (fetched lazily; slower than the stats).
+    (pools || []).forEach(async p => {
+      const el = document.getElementById('cp-' + p.id);
+      try {
+        const cp = await fetch(`/v1/pools/${p.id}/checkpoint`).then(r => r.json());
+        el.className = cp.verified ? 'ok' : 'warn';
+        el.title = `computed ${cp.computed_root || '—'} vs on-chain ${cp.onchain_root}`;
+        el.textContent = cp.verified ? '✓ root verified on-chain' : '⚠ ' + cp.detail;
+      } catch { el.textContent = 'checkpoint unavailable'; }
+    });
 
     const rows = (st.contracts || []).map(c =>
       `<tr><td>${c.label || ''}</td><td>${c.kind}</td><td class="mono">${c.id}</td><td>${fmt(c.start_ledger)}</td></tr>`).join('');
