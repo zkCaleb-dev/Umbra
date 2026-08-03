@@ -1,0 +1,36 @@
+{
+  "network": "testnet",
+  "_source": "https://github.com/NethermindEth/stellar-private-payments deployments/testnet/deployments.json",
+  "contracts": [
+    {
+      "id": "CCG3ICXNCYWQIRUMUQEJZZIIF2DTXIY63UMVDJT2EJM7VZPE45W2XFLU",
+      "kind": "spp-pool",
+      "start_ledger": 3899359,
+      "label": "SPP pool — native XLM (blocklist)"
+    },
+    {
+      "id": "CCBOHPJ2TM24EZ4BJGT5ZHQD4F5N47J6WMJHSBXUA25NZMKPZOXD7XL2",
+      "kind": "spp-pool",
+      "start_ledger": 3899361,
+      "label": "SPP pool — EURC (allowlist+blocklist)"
+    },
+    {
+      "id": "CDMGLGZV2S4HW4WKW7ZAYICT73V57QNCVJ5K6A22DVPPJHIQPHFLSGRL",
+      "kind": "spp-registry",
+      "start_ledger": 3899359,
+      "label": "SPP public key registry"
+    },
+    {
+      "id": "CD3IV5JWN5Y2LDGDTY24PPZFCPD62QGJTCCSFEQNAHCOO3E7IAEQPXCF",
+      "kind": "spp-asp-membership",
+      "start_ledger": 3899359,
+      "label": "SPP ASP membership tree"
+    },
+    {
+      "id": "CAUJSKPEK6EOEULYMBZ7FNLAPSJUKDLAMVKF2KHTDDA7XNUQZVXXSLZ4",
+      "kind": "spp-asp-non-membership",
+      "start_ledger": 3899359,
+      "label": "SPP ASP non-membership tree"
+    }
+  ]
+}

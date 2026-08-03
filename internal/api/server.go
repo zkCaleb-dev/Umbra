@@ -1,0 +1,250 @@
+// Package api serves Umbra's read-only HTTP surface.
+//
+// Privacy stance: responses are range-shaped (download whole ranges,
+// trial-decrypt locally) so the server cannot learn which notes belong
+// to whom, and client addresses are NOT logged unless the operator opts
+// in with UMBRA_LOG_CLIENT_IP=true.
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/Trustless-Work/umbra/internal/config"
+	"github.com/Trustless-Work/umbra/internal/ingest"
+	"github.com/Trustless-Work/umbra/internal/store"
+)
+
+const (
+	defaultPageSize = 500
+	maxPageSize     = 5000
+)
+
+// Server is the HTTP read API.
+type Server struct {
+	cfg *config.Config
+	st  *store.Store
+	ing *ingest.Ingester
+}
+
+// New builds the server.
+func New(cfg *config.Config, st *store.Store, ing *ingest.Ingester) *Server {
+	return &Server{cfg: cfg, st: st, ing: ing}
+}
+
+// Run serves until ctx is done.
+func (s *Server) Run(ctx context.Context) error {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("GET /readyz", s.handleReady)
+	mux.HandleFunc("GET /v1/status", s.handleStatus)
+	mux.HandleFunc("GET /v1/pools", s.handlePools)
+	mux.HandleFunc("GET /v1/pools/{id}/leaves", s.handleLeaves)
+	mux.HandleFunc("GET /v1/pools/{id}/outputs", s.handleOutputs)
+	mux.HandleFunc("GET /v1/pools/{id}/nullifiers", s.handleNullifiers)
+	mux.HandleFunc("GET /v1/registry/{address}", s.handleRegistry)
+
+	srv := &http.Server{
+		Addr:              s.cfg.APIBind,
+		Handler:           s.withCommon(mux),
+		ReadHeaderTimeout: 10 * time.Second, // gosec G112
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+	}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+	slog.Info("api listening", "bind", s.cfg.APIBind)
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// withCommon adds CORS (public read API) and optional access logging.
+func (s *Server) withCommon(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if s.cfg.LogClientIP {
+			slog.Info("request", "path", r.URL.Path, "remote", r.RemoteAddr)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.Ping(r.Context()); err != nil {
+		http.Error(w, "database unreachable", http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ready"))
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	type statusResp struct {
+		Network   string           `json:"network"`
+		Ingestion *ingest.Status   `json:"ingestion,omitempty"`
+		Gaps      []store.GapItem  `json:"gaps"`
+		Contracts []map[string]any `json:"contracts"`
+	}
+	resp := statusResp{Network: s.cfg.Network}
+	if st, ok := s.ing.Status(); ok {
+		resp.Ingestion = &st
+	}
+	gaps, err := s.st.Gaps(r.Context(), s.cfg.Network)
+	if err != nil {
+		s.fail(w, "listing gaps", err)
+		return
+	}
+	resp.Gaps = gaps
+	for _, ct := range s.cfg.Deployments.Contracts {
+		resp.Contracts = append(resp.Contracts, map[string]any{
+			"id": ct.ID, "kind": ct.Kind, "label": ct.Label, "start_ledger": ct.StartLedger,
+		})
+	}
+	s.ok(w, resp)
+}
+
+func (s *Server) handlePools(w http.ResponseWriter, r *http.Request) {
+	type poolResp struct {
+		ID          string           `json:"id"`
+		Label       string           `json:"label,omitempty"`
+		StartLedger uint32           `json:"start_ledger"`
+		Stats       *store.PoolStats `json:"stats"`
+	}
+	out := []poolResp{}
+	for _, ct := range s.cfg.Deployments.Contracts {
+		if ct.Kind != config.KindSPPPool {
+			continue
+		}
+		stats, err := s.st.Stats(r.Context(), ct.ID)
+		if err != nil {
+			s.fail(w, "computing pool stats", err)
+			return
+		}
+		out = append(out, poolResp{ID: ct.ID, Label: ct.Label, StartLedger: ct.StartLedger, Stats: stats})
+	}
+	s.ok(w, out)
+}
+
+func (s *Server) handleLeaves(w http.ResponseWriter, r *http.Request) {
+	s.servePage(w, r, false)
+}
+
+func (s *Server) handleOutputs(w http.ResponseWriter, r *http.Request) {
+	s.servePage(w, r, true)
+}
+
+func (s *Server) servePage(w http.ResponseWriter, r *http.Request, includeOutputs bool) {
+	poolID, ok := s.knownPool(r.PathValue("id"))
+	if !ok {
+		http.Error(w, "unknown pool", http.StatusNotFound)
+		return
+	}
+	from := queryUint(r, "from_index", 0)
+	limit := queryLimit(r)
+	page, err := s.st.Leaves(r.Context(), poolID, from, limit, includeOutputs)
+	if err != nil {
+		s.fail(w, "querying leaves", err)
+		return
+	}
+	s.ok(w, page)
+}
+
+func (s *Server) handleNullifiers(w http.ResponseWriter, r *http.Request) {
+	poolID, ok := s.knownPool(r.PathValue("id"))
+	if !ok {
+		http.Error(w, "unknown pool", http.StatusNotFound)
+		return
+	}
+	since := queryUint(r, "since_ledger", 0)
+	limit := queryLimit(r)
+	page, err := s.st.Nullifiers(r.Context(), poolID, since, limit)
+	if err != nil {
+		s.fail(w, "querying nullifiers", err)
+		return
+	}
+	s.ok(w, page)
+}
+
+func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
+	entry, found, err := s.st.RegistryLookup(r.Context(), r.PathValue("address"))
+	if err != nil {
+		s.fail(w, "registry lookup", err)
+		return
+	}
+	if !found {
+		http.Error(w, "address not registered", http.StatusNotFound)
+		return
+	}
+	s.ok(w, entry)
+}
+
+// knownPool validates a path pool id against the configured spp-pool set
+// — the API never turns user input into arbitrary queries.
+func (s *Server) knownPool(id string) (string, bool) {
+	for _, ct := range s.cfg.Deployments.Contracts {
+		if ct.Kind == config.KindSPPPool && ct.ID == id {
+			return ct.ID, true
+		}
+	}
+	return "", false
+}
+
+func (s *Server) ok(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("encoding response", "err", err)
+	}
+}
+
+// fail logs the real error and answers 500 without leaking internals.
+func (s *Server) fail(w http.ResponseWriter, what string, err error) {
+	slog.Error(what, "err", err)
+	http.Error(w, "internal error", http.StatusInternalServerError)
+}
+
+func queryUint(r *http.Request, key string, def uint32) uint32 {
+	raw := r.URL.Query().Get(key)
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.ParseUint(raw, 10, 32)
+	if err != nil {
+		return def
+	}
+	return uint32(v)
+}
+
+func queryLimit(r *http.Request) int {
+	raw := r.URL.Query().Get("limit")
+	if raw == "" {
+		return defaultPageSize
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		return defaultPageSize
+	}
+	if v > maxPageSize {
+		return maxPageSize
+	}
+	return v
+}

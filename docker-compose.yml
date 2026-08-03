@@ -1,0 +1,33 @@
+services:
+  umbra:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      UMBRA_NETWORK: ${UMBRA_NETWORK:-testnet}
+      UMBRA_RPC_URLS: ${UMBRA_RPC_URLS:-https://soroban-testnet.stellar.org}
+      DATABASE_URL: postgres://umbra:umbra@postgres:5432/umbra?sslmode=disable
+      UMBRA_DEPLOYMENTS: /deployments/${UMBRA_NETWORK:-testnet}.json
+      UMBRA_GET_LEDGERS_LIMIT: ${UMBRA_GET_LEDGERS_LIMIT:-100}
+    ports:
+      - "8080:8080"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: umbra
+      POSTGRES_PASSWORD: umbra
+      POSTGRES_DB: umbra
+    volumes:
+      - umbra-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umbra"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  umbra-pgdata:
