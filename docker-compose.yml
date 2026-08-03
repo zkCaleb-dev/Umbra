@@ -7,7 +7,7 @@ services:
         condition: service_healthy
     environment:
       UMBRA_NETWORK: ${UMBRA_NETWORK:-testnet}
-      UMBRA_RPC_URLS: ${UMBRA_RPC_URLS:-https://soroban-testnet.stellar.org}
+      UMBRA_RPC_URLS: ${UMBRA_RPC_URLS:-https://soroban-testnet.stellar.org,https://soroban-rpc.testnet.stellar.gateway.fm}
       DATABASE_URL: postgres://umbra:umbra@postgres:5432/umbra?sslmode=disable
       UMBRA_DEPLOYMENTS: /deployments/${UMBRA_NETWORK:-testnet}.json
       UMBRA_GET_LEDGERS_LIMIT: ${UMBRA_GET_LEDGERS_LIMIT:-100}

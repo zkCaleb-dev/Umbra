@@ -21,6 +21,10 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
+// progressLogEvery controls how often catch-up progress (rate + timing
+// breakdown) is logged.
+const progressLogEvery = 1000
+
 // Status is a snapshot for /v1/status, maintained by the loop.
 type Status struct {
 	LastLedger     uint32    `json:"last_ledger"`
@@ -95,7 +99,12 @@ func (i *Ingester) Run(ctx context.Context) error {
 	slog.Info("ingestion starting", "from_ledger", start, "contracts", len(i.watched))
 
 	endpointIdx := 0
-	for attempt := 0; attempt < len(i.cfg.RPCURLs); attempt++ {
+	// coldFailures counts consecutive endpoints that could not serve even
+	// ONE ledger from `start`. Once the whole pool has refused cold, the
+	// cause may be retention (start below every window) — resolved by
+	// clamping WITH gap evidence, never silently.
+	coldFailures := 0
+	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -108,12 +117,36 @@ func (i *Ingester) Run(ctx context.Context) error {
 		}
 		slog.Error("endpoint failed, rotating", "endpoint", endpointHost(rpcURL),
 			"ledgers_ingested", n, "err", err)
-		endpointIdx = (endpointIdx + 1) % len(i.cfg.RPCURLs)
+
 		if n > 0 {
-			attempt = -1 // progress was made: reset the give-up counter
+			coldFailures = 0
+		} else {
+			coldFailures++
+		}
+		if coldFailures >= len(i.cfg.RPCURLs) {
+			clamped, cerr := i.clampStart(ctx, start)
+			if cerr != nil {
+				// Not a retention problem (or nothing answered): a full
+				// cold pool is an outage. Exit; the supervisor restart is
+				// the outer retry loop.
+				return fmt.Errorf("every configured RPC endpoint failed cold: %w", cerr)
+			}
+			// Deliberate discontinuity: the gap is recorded, so the hash
+			// chain restarts at the clamped ledger.
+			start, prevHash = clamped, ""
+			coldFailures = 0
+		}
+
+		endpointIdx = (endpointIdx + 1) % len(i.cfg.RPCURLs)
+		// Exponential backoff between rotations so a rate-limited pool is
+		// not hammered (cap 30s).
+		delay := min(time.Duration(1<<min(coldFailures, 5))*time.Second, 30*time.Second)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
 		}
 	}
-	return fmt.Errorf("every configured RPC endpoint failed")
 }
 
 // runOnEndpoint drives one backend until error/cancel. Returns how many
@@ -134,25 +167,44 @@ func (i *Ingester) runOnEndpoint(ctx context.Context, rpcURL string, start *uint
 	}
 
 	committed := 0
+	// Timing breakdown, logged every progressLogEvery ledgers so the
+	// catch-up bottleneck (RPC fetch vs DB commit) is measurable in prod.
+	var fetchDur, storeDur time.Duration
+	windowStart := time.Now()
+
 	for seq := *start; ; seq++ {
 		if err := ctx.Err(); err != nil {
 			return committed, err
 		}
+		t0 := time.Now()
 		meta, err := backend.GetLedger(ctx, seq)
 		if err != nil {
 			return committed, fmt.Errorf("fetching ledger %d: %w", seq, err)
 		}
+		fetchDur += time.Since(t0)
 		if err := i.checkContinuity(meta, *prevHash); err != nil {
 			// A fallback serving a different chain must never poison the
 			// index: hard error, do not advance.
 			return committed, err
 		}
+		t1 := time.Now()
 		if err := i.processLedger(ctx, meta); err != nil {
 			return committed, err
 		}
+		storeDur += time.Since(t1)
 		hash := meta.LedgerHash().HexString()
 		*start, *prevHash = seq+1, hash
 		committed++
+
+		if committed%progressLogEvery == 0 {
+			elapsed := time.Since(windowStart)
+			slog.Info("catch-up progress",
+				"ledger", seq,
+				"rate_per_s", fmt.Sprintf("%.1f", float64(progressLogEvery)/elapsed.Seconds()),
+				"fetch_pct", fmt.Sprintf("%.0f", 100*fetchDur.Seconds()/elapsed.Seconds()),
+				"process_store_pct", fmt.Sprintf("%.0f", 100*storeDur.Seconds()/elapsed.Seconds()))
+			fetchDur, storeDur, windowStart = 0, 0, time.Now()
+		}
 
 		i.publishStatus(Status{
 			LastLedger:     seq,
