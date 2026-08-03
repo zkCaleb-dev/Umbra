@@ -8,6 +8,7 @@ package api
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -24,6 +25,9 @@ const (
 	defaultPageSize = 500
 	maxPageSize     = 5000
 )
+
+//go:embed dashboard.html
+var dashboardHTML []byte
 
 // Server is the HTTP read API.
 type Server struct {
@@ -56,6 +60,11 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /v1/tokens/{id}/transfers", s.handleTransfers)
 	// Bootnode-compatible JSON-RPC surface (see jsonrpc.go).
 	mux.HandleFunc("POST /{$}", s.handleJSONRPC)
+	// Human-facing status page.
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(dashboardHTML)
+	})
 
 	srv := &http.Server{
 		Addr:              s.cfg.APIBind,
@@ -81,7 +90,8 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) withCommon(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
