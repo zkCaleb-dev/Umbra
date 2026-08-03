@@ -39,6 +39,8 @@ func Derive(kinds map[string]config.ContractKind, events []extract.Event) store.
 			deriveRegistry(ev, &d)
 		case config.KindToken:
 			deriveToken(ev, &d)
+		case config.KindConfidentialToken:
+			deriveCT(ev, &d)
 		default:
 			// raw / ASP kinds: raw storage only (ASP derived views are a
 			// follow-up; their events already land in `events`).

@@ -159,12 +159,25 @@ type TokenTransfer struct {
 	Amount  string // i128 as decimal string
 }
 
+// CTEvent is a derived ct_events row (OpenZeppelin Confidential Token).
+type CTEvent struct {
+	EventID      string
+	TokenID      string
+	Ledger       uint32
+	TxHash       string
+	Kind         string
+	Addresses    []string
+	AmountPublic *string
+	Payload      []byte // JSON ciphertext material, nil when none
+}
+
 // Derived groups the derived rows produced from one ledger's events.
 type Derived struct {
 	Leaves     []Leaf
 	Nullifiers []Nullifier
 	Registry   []RegistryKey
 	Transfers  []TokenTransfer
+	CTEvents   []CTEvent
 }
 
 // WriteLedger atomically persists a ledger: raw events + derived rows +
@@ -265,6 +278,15 @@ func writeRowsTx(ctx context.Context, tx pgx.Tx, network string, events []RawEve
 			VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (event_id) DO NOTHING`,
 			t.EventID, t.TokenID, int64(t.Ledger), t.TxHash, t.From, t.To, t.Amount); err != nil {
 			return fmt.Errorf("inserting transfer %s: %w", t.EventID, err)
+		}
+	}
+	for _, c := range d.CTEvents {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO ct_events (event_id, token_id, ledger, tx_hash, kind, addresses, amount_public, payload)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (event_id) DO NOTHING`,
+			c.EventID, c.TokenID, int64(c.Ledger), c.TxHash, c.Kind, c.Addresses,
+			c.AmountPublic, c.Payload); err != nil {
+			return fmt.Errorf("inserting ct event %s: %w", c.EventID, err)
 		}
 	}
 	return nil

@@ -154,3 +154,59 @@ func (s *Store) Transfers(ctx context.Context, tokenID, address string, since ui
 	}
 	return page, nil
 }
+
+// CTHistoryItem is one confidential-token event touching an address.
+type CTHistoryItem struct {
+	EventID      string          `json:"event_id"`
+	Ledger       uint32          `json:"ledger"`
+	TxHash       string          `json:"tx_hash"`
+	Kind         string          `json:"kind"`
+	Addresses    []string        `json:"addresses"`
+	AmountPublic *string         `json:"amount_public,omitempty"`
+	Payload      json.RawMessage `json:"payload,omitempty"`
+}
+
+// CTHistoryPage pages a token's events for one address in ledger order.
+type CTHistoryPage struct {
+	TokenID     string          `json:"token_id"`
+	Address     string          `json:"address"`
+	SinceLedger uint32          `json:"since_ledger"`
+	Events      []CTHistoryItem `json:"events"`
+	NextLedger  *uint32         `json:"next_ledger,omitempty"`
+}
+
+// CTHistory returns confidential-token events of tokenID that name
+// address, at ledger >= since. The server only ever filters by PUBLIC
+// addresses — amounts stay ciphertext end to end.
+func (s *Store) CTHistory(ctx context.Context, tokenID, address string, since uint32, limit int) (*CTHistoryPage, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT event_id, ledger, tx_hash, kind, addresses, amount_public, payload
+		FROM ct_events
+		WHERE token_id = $1 AND $2 = ANY(addresses) AND ledger >= $3
+		ORDER BY ledger, event_id LIMIT $4`,
+		tokenID, address, int64(since), limit)
+	if err != nil {
+		return nil, fmt.Errorf("querying ct history: %w", err)
+	}
+	defer rows.Close()
+
+	page := &CTHistoryPage{TokenID: tokenID, Address: address, SinceLedger: since, Events: []CTHistoryItem{}}
+	for rows.Next() {
+		var it CTHistoryItem
+		var ledger int64
+		if err := rows.Scan(&it.EventID, &ledger, &it.TxHash, &it.Kind, &it.Addresses,
+			&it.AmountPublic, &it.Payload); err != nil {
+			return nil, err
+		}
+		it.Ledger = uint32(ledger)
+		page.Events = append(page.Events, it)
+	}
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+	if len(page.Events) == limit {
+		next := page.Events[len(page.Events)-1].Ledger + 1
+		page.NextLedger = &next
+	}
+	return page, nil
+}

@@ -79,6 +79,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /v1/contracts/{id}/events", s.handleEvents)
 	mux.HandleFunc("GET /v1/tokens/{id}/transfers", s.handleTransfers)
 	mux.HandleFunc("GET /v1/pools/{id}/checkpoint", s.handleCheckpoint)
+	mux.HandleFunc("GET /v1/ct/{token}/history/{address}", s.handleCTHistory)
 	// Bootnode-compatible JSON-RPC surface (see jsonrpc.go).
 	mux.HandleFunc("POST /{$}", s.handleJSONRPC)
 	// Human-facing status page.
@@ -274,6 +275,24 @@ func (s *Server) handleTransfers(w http.ResponseWriter, r *http.Request) {
 		r.URL.Query().Get("address"), queryUint(r, "since_ledger", 0), queryLimit(r))
 	if err != nil {
 		s.fail(w, "querying transfers", err)
+		return
+	}
+	s.ok(w, page)
+}
+
+// handleCTHistory serves a confidential token's events touching one
+// address: kinds, public amounts where they exist, and the ciphertext
+// payload the wallet decrypts locally.
+func (s *Server) handleCTHistory(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("token")
+	if kind, watched := s.watchedContract(token); !watched || kind != config.KindConfidentialToken {
+		http.Error(w, "confidential token not indexed", http.StatusNotFound)
+		return
+	}
+	page, err := s.st.CTHistory(r.Context(), token, r.PathValue("address"),
+		queryUint(r, "since_ledger", 0), queryLimit(r))
+	if err != nil {
+		s.fail(w, "querying ct history", err)
 		return
 	}
 	s.ok(w, page)

@@ -30,6 +30,10 @@ const (
 	// KindToken decodes SEP-41/SAC transfer events into the
 	// token_transfers view (queryable per address).
 	KindToken ContractKind = "token"
+	// KindConfidentialToken decodes OpenZeppelin Confidential Token
+	// events (ciphertext transfers, deposits, auditor material) into the
+	// ct_events view, queryable per address.
+	KindConfidentialToken ContractKind = "confidential-token"
 	// KindRaw stores raw events only — works for any Soroban contract.
 	KindRaw ContractKind = "raw"
 )
@@ -116,7 +120,7 @@ func (c *Config) validate() error {
 			return fmt.Errorf("contract id %q does not look like a C... strkey", ct.ID)
 		}
 		switch ct.Kind {
-		case KindSPPPool, KindSPPRegistry, KindSPPASPMembership, KindSPPASPNonMember, KindToken, KindRaw:
+		case KindSPPPool, KindSPPRegistry, KindSPPASPMembership, KindSPPASPNonMember, KindToken, KindConfidentialToken, KindRaw:
 		default:
 			return fmt.Errorf("contract %s has unknown kind %q", ct.ID, ct.Kind)
 		}
