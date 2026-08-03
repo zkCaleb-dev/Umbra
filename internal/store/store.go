@@ -148,11 +148,23 @@ type RegistryKey struct {
 	Ledger        uint32
 }
 
+// TokenTransfer is a derived token_transfers row (SEP-41/SAC transfer).
+type TokenTransfer struct {
+	EventID string
+	TokenID string
+	Ledger  uint32
+	TxHash  string
+	From    string
+	To      string
+	Amount  string // i128 as decimal string
+}
+
 // Derived groups the derived rows produced from one ledger's events.
 type Derived struct {
 	Leaves     []Leaf
 	Nullifiers []Nullifier
 	Registry   []RegistryKey
+	Transfers  []TokenTransfer
 }
 
 // WriteLedger atomically persists a ledger: raw events + derived rows +
@@ -207,6 +219,14 @@ func (s *Store) WriteLedger(ctx context.Context, network string, ledger uint32,
 			WHERE EXCLUDED.ledger >= registry_keys.ledger`,
 			r.RegistryID, r.Owner, r.EncryptionKey, r.NoteKey, int64(r.Ledger)); err != nil {
 			return fmt.Errorf("upserting registry key for %s: %w", r.Owner, err)
+		}
+	}
+	for _, t := range d.Transfers {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO token_transfers (event_id, token_id, ledger, tx_hash, from_addr, to_addr, amount)
+			VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (event_id) DO NOTHING`,
+			t.EventID, t.TokenID, int64(t.Ledger), t.TxHash, t.From, t.To, t.Amount); err != nil {
+			return fmt.Errorf("inserting transfer %s: %w", t.EventID, err)
 		}
 	}
 	if _, err := tx.Exec(ctx, `

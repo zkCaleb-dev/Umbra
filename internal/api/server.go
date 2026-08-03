@@ -52,6 +52,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /v1/pools/{id}/outputs", s.handleOutputs)
 	mux.HandleFunc("GET /v1/pools/{id}/nullifiers", s.handleNullifiers)
 	mux.HandleFunc("GET /v1/registry/{address}", s.handleRegistry)
+	mux.HandleFunc("GET /v1/contracts/{id}/events", s.handleEvents)
+	mux.HandleFunc("GET /v1/tokens/{id}/transfers", s.handleTransfers)
 
 	srv := &http.Server{
 		Addr:              s.cfg.APIBind,
@@ -196,6 +198,55 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.ok(w, entry)
+}
+
+// handleEvents serves any configured contract's raw event stream — the
+// generic surface: add a contract with kind "raw" and its full history
+// is queryable here, no decoder required.
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, watched := s.watchedContract(id); !watched {
+		http.Error(w, "contract not indexed", http.StatusNotFound)
+		return
+	}
+	ok, cursor := store.ParseEventCursor(r.URL.Query().Get("cursor"))
+	if !ok {
+		http.Error(w, "malformed cursor (want <ledger>-<tx>-<event>)", http.StatusBadRequest)
+		return
+	}
+	page, err := s.st.Events(r.Context(), id, cursor, queryLimit(r))
+	if err != nil {
+		s.fail(w, "querying events", err)
+		return
+	}
+	s.ok(w, page)
+}
+
+// handleTransfers serves decoded transfers of a kind:"token" contract,
+// optionally filtered by ?address= (sender or recipient).
+func (s *Server) handleTransfers(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if kind, watched := s.watchedContract(id); !watched || kind != config.KindToken {
+		http.Error(w, "token not indexed", http.StatusNotFound)
+		return
+	}
+	page, err := s.st.Transfers(r.Context(), id,
+		r.URL.Query().Get("address"), queryUint(r, "since_ledger", 0), queryLimit(r))
+	if err != nil {
+		s.fail(w, "querying transfers", err)
+		return
+	}
+	s.ok(w, page)
+}
+
+// watchedContract reports whether id is configured, and its kind.
+func (s *Server) watchedContract(id string) (config.ContractKind, bool) {
+	for _, ct := range s.cfg.Deployments.Contracts {
+		if ct.ID == id {
+			return ct.Kind, true
+		}
+	}
+	return "", false
 }
 
 // knownPool validates a path pool id against the configured spp-pool set

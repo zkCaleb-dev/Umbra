@@ -31,6 +31,12 @@
       "kind": "spp-asp-non-membership",
       "start_ledger": 3899359,
       "label": "SPP ASP non-membership tree"
+    },
+    {
+      "id": "CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ",
+      "kind": "token",
+      "start_ledger": 3899361,
+      "label": "EURC (SAC) — backs the SPP EURC pool"
     }
   ]
 }

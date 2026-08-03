@@ -80,7 +80,7 @@ func scValToAny(v xdr.ScVal) any {
 		}
 	case xdr.ScValTypeScvI128:
 		if p, ok := v.GetI128(); ok {
-			return i128String(p)
+			return I128String(p)
 		}
 	case xdr.ScValTypeScvU256:
 		if p, ok := v.GetU256(); ok {
@@ -165,7 +165,7 @@ func u128String(p xdr.UInt128Parts) string {
 	return n.String()
 }
 
-func i128String(p xdr.Int128Parts) string {
+func I128String(p xdr.Int128Parts) string {
 	n := new(big.Int).SetInt64(int64(p.Hi))
 	n.Lsh(n, 64).Or(n, new(big.Int).SetUint64(uint64(p.Lo)))
 	return n.String()
