@@ -1,0 +1,36 @@
+diff --git a/cli/src/session.rs b/cli/src/session.rs
+index a6a3048..965bee7 100644
+--- a/cli/src/session.rs
++++ b/cli/src/session.rs
+@@ -28,12 +28,21 @@ impl ClientSession {
+         let storage =
+             LocalStorage::open(&storage_path).map_err(|e| anyhow::anyhow!("open storage: {e}"))?;
+ 
++        // Wire the stored bootnode setting into the client so historical
++        // sync can fall back to the configured archive (was hardcoded None).
++        let bootnode_url = config
++            .open_storage()
++            .ok()
++            .and_then(|s| s.get_bootnode_setting().ok())
++            .filter(|b| b.enabled && !b.url.is_empty())
++            .map(|b| b.url);
++
+         let client = if readonly {
+             Client::init_readonly(
+                 network.rpc_url.clone(),
+                 storage,
+                 config.deployment.clone(),
+-                None,
++                bootnode_url.clone(),
+             )
+             .map_err(|e| anyhow::anyhow!("init client: {e}"))?
+         } else {
+@@ -47,7 +56,7 @@ impl ClientSession {
+                 storage,
+                 prover,
+                 config.deployment.clone(),
+-                None,
++                bootnode_url.clone(),
+             )
+             .map_err(|e| anyhow::anyhow!("init client: {e}"))?
+         };
