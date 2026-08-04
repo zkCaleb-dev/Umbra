@@ -52,9 +52,9 @@
     },
     {
       "id": "CANJZVFDJ2ARRHHCPTBIZ2O3N45KWCZJY2Q4ZUPWZW6T7TKNDBNZOQ4D",
-      "kind": "raw",
+      "kind": "confidential-token",
       "start_ledger": 3952000,
-      "label": "Private escrow experiment (TW team)"
+      "label": "Confidential USDC wrapper (TW team)"
     }
   ]
 }
