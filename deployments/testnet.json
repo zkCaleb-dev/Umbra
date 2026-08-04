@@ -49,6 +49,12 @@
       "kind": "confidential-token",
       "start_ledger": 3836000,
       "label": "Confidential Token — official OpenZeppelin demo"
+    },
+    {
+      "id": "CANJZVFDJ2ARRHHCPTBIZ2O3N45KWCZJY2Q4ZUPWZW6T7TKNDBNZOQ4D",
+      "kind": "raw",
+      "start_ledger": 3952000,
+      "label": "Private escrow experiment (TW team)"
     }
   ]
 }
