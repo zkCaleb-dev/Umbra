@@ -157,13 +157,14 @@ func (s *Store) Transfers(ctx context.Context, tokenID, address string, since ui
 
 // CTHistoryItem is one confidential-token event touching an address.
 type CTHistoryItem struct {
-	EventID      string          `json:"event_id"`
-	Ledger       uint32          `json:"ledger"`
-	TxHash       string          `json:"tx_hash"`
-	Kind         string          `json:"kind"`
-	Addresses    []string        `json:"addresses"`
-	AmountPublic *string         `json:"amount_public,omitempty"`
-	Payload      json.RawMessage `json:"payload,omitempty"`
+	EventID        string          `json:"event_id"`
+	Ledger         uint32          `json:"ledger"`
+	LedgerClosedAt time.Time       `json:"ledger_closed_at"`
+	TxHash         string          `json:"tx_hash"`
+	Kind           string          `json:"kind"`
+	Addresses      []string        `json:"addresses"`
+	AmountPublic   *string         `json:"amount_public,omitempty"`
+	Payload        json.RawMessage `json:"payload,omitempty"`
 }
 
 // CTHistoryPage pages a token's events for one address in ledger order.
@@ -180,10 +181,11 @@ type CTHistoryPage struct {
 // addresses — amounts stay ciphertext end to end.
 func (s *Store) CTHistory(ctx context.Context, tokenID, address string, since uint32, limit int) (*CTHistoryPage, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT event_id, ledger, tx_hash, kind, addresses, amount_public, payload
-		FROM ct_events
-		WHERE token_id = $1 AND $2 = ANY(addresses) AND ledger >= $3
-		ORDER BY ledger, event_id LIMIT $4`,
+		SELECT c.event_id, c.ledger, e.ledger_closed_at, c.tx_hash, c.kind,
+		       c.addresses, c.amount_public, c.payload
+		FROM ct_events c JOIN events e ON e.id = c.event_id
+		WHERE c.token_id = $1 AND $2 = ANY(c.addresses) AND c.ledger >= $3
+		ORDER BY c.ledger, c.event_id LIMIT $4`,
 		tokenID, address, int64(since), limit)
 	if err != nil {
 		return nil, fmt.Errorf("querying ct history: %w", err)
@@ -194,8 +196,8 @@ func (s *Store) CTHistory(ctx context.Context, tokenID, address string, since ui
 	for rows.Next() {
 		var it CTHistoryItem
 		var ledger int64
-		if err := rows.Scan(&it.EventID, &ledger, &it.TxHash, &it.Kind, &it.Addresses,
-			&it.AmountPublic, &it.Payload); err != nil {
+		if err := rows.Scan(&it.EventID, &ledger, &it.LedgerClosedAt, &it.TxHash, &it.Kind,
+			&it.Addresses, &it.AmountPublic, &it.Payload); err != nil {
 			return nil, err
 		}
 		it.Ledger = uint32(ledger)

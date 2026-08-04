@@ -66,6 +66,7 @@ ledger.
 | `GET /v1/registry/{address}` | Registered encryption + note public keys |
 | `GET /v1/contracts/{id}/events?cursor=&limit=` | Raw event stream of ANY configured contract (readable render + XDR) |
 | `GET /v1/tokens/{id}/transfers?address=&since_ledger=` | Decoded SEP-41/SAC transfers, filterable per address |
+| `GET /v1/ct/{token}/history/{address}?since_ledger=&limit=` | Confidential-token events naming an address — ciphertext payloads served verbatim, decryption is the client's job |
 | `GET /v1/status` | Cursor, RPC endpoint, gap evidence, contracts |
 | `GET /healthz`, `GET /readyz` | Liveness / readiness |
 
