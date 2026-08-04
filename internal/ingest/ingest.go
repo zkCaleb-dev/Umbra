@@ -132,9 +132,12 @@ func (i *Ingester) Run(ctx context.Context) error {
 			switch {
 			case cerr == nil:
 				// Deliberate discontinuity: the gap is recorded, so the
-				// hash chain restarts at the clamped ledger.
+				// hash chain restarts at the clamped ledger — and the
+				// reconciler gets a nudge so the archive leg can turn
+				// that gap back into history.
 				start, prevHash = clamped, ""
 				coldFailures = 0
+				i.NotifyChange()
 			default:
 				// Not a retention problem (or nothing answered): an
 				// outage. A durable index RIDES OUT outages — exiting

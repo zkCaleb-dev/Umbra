@@ -81,7 +81,40 @@ type Config struct {
 	// handoff (pure archive mode: Umbra serves everything it has).
 	HandoffCutoffLedgers uint32 `env:"UMBRA_HANDOFF_CUTOFF_LEDGERS" envDefault:"86400"`
 
+	// ArchiveBackfill enables the captive-core leg: history below every
+	// RPC's retention window is replayed from the public history
+	// archives instead of being written off as a gap. Requires the
+	// stellar-core binary (auto-disables with a warning if missing).
+	ArchiveBackfill bool `env:"UMBRA_ARCHIVE_BACKFILL" envDefault:"true"`
+	// CoreBinaryPath locates stellar-core for the archive leg.
+	CoreBinaryPath string `env:"UMBRA_CORE_BINARY" envDefault:"/usr/bin/stellar-core"`
+	// ArchiveURLs overrides the history archive set (defaults to the
+	// SDF archives of the configured network).
+	ArchiveURLs []string `env:"UMBRA_ARCHIVE_URLS" envSeparator:","`
+	// CoreStoragePath is scratch space for captive core's buckets.
+	CoreStoragePath string `env:"UMBRA_CORE_STORAGE" envDefault:"/tmp/umbra-captive"`
+
 	Deployments Deployments `env:"-"`
+}
+
+// HistoryArchiveURLs returns the configured archive set, defaulting to
+// the SDF public archives for the network.
+func (c *Config) HistoryArchiveURLs() []string {
+	if len(c.ArchiveURLs) > 0 {
+		return c.ArchiveURLs
+	}
+	if c.Network == "pubnet" {
+		return []string{
+			"https://history.stellar.org/prd/core-live/core_live_001",
+			"https://history.stellar.org/prd/core-live/core_live_002",
+			"https://history.stellar.org/prd/core-live/core_live_003",
+		}
+	}
+	return []string{
+		"https://history.stellar.org/prd/core-testnet/core_testnet_001",
+		"https://history.stellar.org/prd/core-testnet/core_testnet_002",
+		"https://history.stellar.org/prd/core-testnet/core_testnet_003",
+	}
 }
 
 // Load reads env + deployments file and validates the result.

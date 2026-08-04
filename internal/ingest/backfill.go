@@ -32,10 +32,51 @@ func (i *Ingester) coverageReconciler(ctx context.Context, loopStart uint32) {
 		for _, job := range i.reconcileCoverage(ctx, pos) {
 			job(ctx)
 		}
+		i.replayGaps(ctx)
 		select {
 		case <-ctx.Done():
 			return
 		case <-i.reconcileCh:
+		}
+	}
+}
+
+// replayGaps turns recorded gap evidence into recovered history: with
+// the archive leg available, every gap range is replayed from the
+// history archives for the FULL current watch set (a gap is a
+// network-range statement, so any watched contract may have events
+// there). Success resolves the evidence; failure leaves it honest and
+// retries on the next pass. This is also how a clamped cold start heals
+// itself — the live loop records the below-retention gap, then this
+// pass recovers it.
+func (i *Ingester) replayGaps(ctx context.Context) {
+	if !i.archiveAvailable() {
+		return
+	}
+	gaps, err := i.st.Gaps(ctx, i.cfg.Network)
+	if err != nil {
+		slog.Error("listing gaps for archive replay", "err", err)
+		return
+	}
+	for _, gap := range gaps {
+		if ctx.Err() != nil {
+			return
+		}
+		snap := i.reg.Snapshot()
+		ids := make([]string, 0, len(snap.Contracts))
+		for _, ct := range snap.Contracts {
+			ids = append(ids, ct.ID)
+		}
+		lower := func(coveredDownTo uint32) {
+			for _, id := range ids {
+				if err := i.st.SetCoveredFrom(ctx, id, coveredDownTo); err != nil {
+					slog.Error("recording archive coverage", "contract", id, "err", err)
+				}
+			}
+		}
+		if err := i.archiveBackfill(ctx, ids, snap.Watched, gap.FromLedger, gap.ToLedger, lower); err != nil {
+			slog.Error("gap archive replay failed; evidence stays recorded",
+				"gap", fmt.Sprintf("[%d,%d]", gap.FromLedger, gap.ToLedger), "err", err)
 		}
 	}
 }
@@ -176,14 +217,24 @@ func (i *Ingester) runBackfillJob(ctx context.Context, ids []string,
 		switch {
 		case oldest > 0 && oldest > chunkStart:
 			// The low end fell out of every retention window. Take what
-			// is still reachable, then record the unreachable remainder
-			// as ONE honest gap and finish.
+			// the RPCs still serve, then hand the remainder to the
+			// archive leg — or, without one, record the honest gap.
 			if oldest <= end {
 				if err := i.retryClamped(ctx, label, watched, oldest, end); err != nil {
 					slog.Error("clamped backfill chunk failed", "err", err)
 					return // resume next boot; coverage already reflects progress
 				}
 				lowerCoverage(oldest)
+			}
+			if i.archiveAvailable() {
+				if err := i.archiveBackfill(ctx, ids, watched, lo, oldest-1, lowerCoverage); err != nil {
+					slog.Error("archive backfill failed; range stays a gap until the next pass", "err", err)
+					if err := i.st.RecordGap(ctx, i.cfg.Network, lo, oldest-1,
+						"below provider retention; archive replay failed and will retry on the next reconcile pass"); err != nil {
+						slog.Error("recording backfill gap", "err", err)
+					}
+				}
+				return
 			}
 			if err := i.st.RecordGap(ctx, i.cfg.Network, lo, oldest-1,
 				"below provider retention during backfill; events already stored in this range are kept"); err != nil {

@@ -76,12 +76,16 @@
 <div class="card">
   <div style="color:var(--ink-2);font-size:13px;margin-bottom:10px">
     Paste a testnet contract id — Umbra classifies it from its on-chain spec,
-    indexes it live from now on, and backfills whatever history the RPC pool
-    still retains. No signup, no restart.
+    indexes it live from now on, and recovers history: recent ranges from the
+    RPC, anything older by replaying the public history archives. Default
+    depth is 30 days; set the date to reach further back (deep ranges take
+    hours, once — newest history lands first). No signup, no restart.
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <input id="reg-id" placeholder="C…" maxlength="56"
            style="flex:2 1 340px;padding:7px 10px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,monospace;font-size:12px">
+    <input id="reg-since" type="date" title="history since (optional, default 30 days)"
+           style="flex:0 1 150px;padding:7px 10px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:13px">
     <input id="reg-label" placeholder="label (optional)" maxlength="120"
            style="flex:1 1 140px;padding:7px 10px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:13px">
     <button onclick="registerContract()"
@@ -166,10 +170,12 @@ async function registerContract() {
   const id = $('reg-id').value.trim();
   out.textContent = 'classifying + registering…';
   try {
+    const body = {id, label: $('reg-label').value.trim()};
+    if ($('reg-since').value) body.since = $('reg-since').value;
     const resp = await fetch('/v1/contracts', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({id, label: $('reg-label').value.trim()}),
+      body: JSON.stringify(body),
     });
     const text = await resp.text();
     if (!resp.ok) { out.textContent = '✗ ' + text.trim(); return; }

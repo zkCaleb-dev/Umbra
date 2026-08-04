@@ -303,6 +303,17 @@ func (s *Store) RecordGap(ctx context.Context, network string, from, to uint32, 
 	return err
 }
 
+// ResolveGapsWithin deletes gap evidence fully contained in [from, to] —
+// called after an archive replay actually recovers that history, at
+// which point the evidence would be a false claim of absence.
+func (s *Store) ResolveGapsWithin(ctx context.Context, network string, from, to uint32) error {
+	_, err := s.pool.Exec(ctx, `
+		DELETE FROM gaps
+		WHERE network=$1 AND from_ledger>=$2 AND to_ledger<=$3`,
+		network, int64(from), int64(to))
+	return err
+}
+
 // Cursor returns the persisted cursor, or ok=false when none exists yet.
 func (s *Store) Cursor(ctx context.Context, network string) (ledger uint32, hash string, ok bool, err error) {
 	var l int64
