@@ -119,16 +119,23 @@ func (i *Ingester) Run(ctx context.Context) error {
 		}
 		if coldFailures >= len(i.cfg.RPCURLs) {
 			clamped, cerr := i.clampStart(ctx, start)
-			if cerr != nil {
-				// Not a retention problem (or nothing answered): a full
-				// cold pool is an outage. Exit; the supervisor restart is
-				// the outer retry loop.
-				return fmt.Errorf("every configured RPC endpoint failed cold: %w", cerr)
+			switch {
+			case cerr == nil:
+				// Deliberate discontinuity: the gap is recorded, so the
+				// hash chain restarts at the clamped ledger.
+				start, prevHash = clamped, ""
+				coldFailures = 0
+			default:
+				// Not a retention problem (or nothing answered): an
+				// outage. A durable index RIDES OUT outages — exiting
+				// here caused restart storms (and each boot re-ran
+				// startup work). Keep retrying at the backoff cap.
+				slog.Error("whole RPC pool failing; holding and retrying",
+					"err", cerr)
+				if coldFailures > 8 {
+					coldFailures = 8 // keep the backoff capped, avoid overflow
+				}
 			}
-			// Deliberate discontinuity: the gap is recorded, so the hash
-			// chain restarts at the clamped ledger.
-			start, prevHash = clamped, ""
-			coldFailures = 0
 		}
 
 		endpointIdx = (endpointIdx + 1) % len(i.cfg.RPCURLs)

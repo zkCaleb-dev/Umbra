@@ -15,6 +15,12 @@ services:
       UMBRA_LOG_CLIENT_IP: ${UMBRA_LOG_CLIENT_IP:-false}
     ports:
       - "8080:8080"
+    # Docker's embedded resolver intermittently failed to resolve the
+    # fallback RPC host ("no such host"), silently reducing the pool to
+    # one endpoint. Pin reliable upstreams.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
 
   postgres:
     image: postgres:16-alpine

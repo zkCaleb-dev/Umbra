@@ -293,9 +293,12 @@ func writeRowsTx(ctx context.Context, tx pgx.Tx, network string, events []RawEve
 }
 
 // RecordGap persists evidence of a range we could not ingest.
+// Idempotent per (network, range): re-recording a known gap is a no-op,
+// so retry loops can never flood the evidence table.
 func (s *Store) RecordGap(ctx context.Context, network string, from, to uint32, reason string) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO gaps (network, from_ledger, to_ledger, reason) VALUES ($1,$2,$3,$4)`,
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO gaps (network, from_ledger, to_ledger, reason) VALUES ($1,$2,$3,$4)
+		ON CONFLICT (network, from_ledger, to_ledger) DO NOTHING`,
 		network, int64(from), int64(to), reason)
 	return err
 }

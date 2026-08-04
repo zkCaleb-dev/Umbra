@@ -80,31 +80,134 @@ func (i *Ingester) reconcileCoverage(ctx context.Context, loopStart uint32) []fu
 	slog.Info("scheduling grouped backfill", "contracts", ids, "from", lo, "to", hi)
 
 	job := func(jctx context.Context) {
-		start := time.Now()
-		for _, rpcURL := range i.cfg.RPCURLs {
-			if err := jctx.Err(); err != nil {
-				return
-			}
-			err := i.backfillRange(jctx, rpcURL, fmt.Sprintf("%d contracts", len(ids)), watched, lo, hi)
-			if err == nil {
-				for _, p := range todo {
-					if err := i.st.SetCoveredFrom(jctx, p.id, p.from); err != nil {
-						slog.Error("recording backfill coverage", "contract", p.id, "err", err)
-					}
+		i.runBackfillJob(jctx, ids, watched, lo, hi, func(coveredDownTo uint32) {
+			for _, p := range todo {
+				if err := i.st.SetCoveredFrom(jctx, p.id, coveredDownTo); err != nil {
+					slog.Error("recording backfill coverage", "contract", p.id, "err", err)
 				}
-				slog.Info("backfill complete", "contracts", ids,
-					"from", lo, "to", hi, "took", time.Since(start).Round(time.Second))
-				return
 			}
-			slog.Error("backfill endpoint failed, trying next",
-				"endpoint", endpointHost(rpcURL), "err", err)
-		}
-		if err := i.st.RecordGap(jctx, i.cfg.Network, lo, hi,
-			"backfill failed on every endpoint"); err != nil {
-			slog.Error("recording backfill gap", "err", err)
-		}
+		})
 	}
 	return []func(context.Context){job}
+}
+
+// backfillChunk is how many ledgers a backfill fetches before coverage
+// is persisted. Chunks walk DOWNWARD (newest first): after each chunk
+// the covered range grows monotonically toward the past, so an
+// interruption at any point leaves complete, resumable coverage — and
+// recent history (what wallets ask for first) lands first.
+const backfillChunk = 2000
+
+// runBackfillJob walks [lo, hi] in descending chunks, persisting
+// progress after every chunk via lowerCoverage. When the low end has
+// fallen below every endpoint's retention it clamps, records ONE gap
+// for the truly unreachable part, and finishes — partial history is a
+// result, not a failure.
+func (i *Ingester) runBackfillJob(ctx context.Context, ids []string,
+	watched map[string]struct{}, lo, hi uint32, lowerCoverage func(uint32)) {
+
+	label := fmt.Sprintf("%d contracts", len(ids))
+	started := time.Now()
+	end := hi
+
+	for end >= lo {
+		if ctx.Err() != nil {
+			return
+		}
+		chunkStart := lo
+		if end >= backfillChunk && end-backfillChunk+1 > lo {
+			chunkStart = end - backfillChunk + 1
+		}
+
+		var lastErr error
+		done := false
+		for _, rpcURL := range i.cfg.RPCURLs {
+			if ctx.Err() != nil {
+				return
+			}
+			if err := i.backfillRange(ctx, rpcURL, label, watched, chunkStart, end); err != nil {
+				lastErr = err
+				continue
+			}
+			done = true
+			break
+		}
+
+		if done {
+			lowerCoverage(chunkStart)
+			if chunkStart == lo {
+				slog.Info("backfill complete", "contracts", ids,
+					"from", lo, "to", hi, "took", time.Since(started).Round(time.Second))
+				return
+			}
+			end = chunkStart - 1
+			continue
+		}
+
+		// Whole pool refused this chunk. Retention or outage?
+		oldest := i.poolOldest(ctx)
+		switch {
+		case oldest > 0 && oldest > chunkStart:
+			// The low end fell out of every retention window. Take what
+			// is still reachable, then record the unreachable remainder
+			// as ONE honest gap and finish.
+			if oldest <= end {
+				if err := i.retryClamped(ctx, label, watched, oldest, end); err != nil {
+					slog.Error("clamped backfill chunk failed", "err", err)
+					return // resume next boot; coverage already reflects progress
+				}
+				lowerCoverage(oldest)
+			}
+			if err := i.st.RecordGap(ctx, i.cfg.Network, lo, oldest-1,
+				"below provider retention during backfill; events already stored in this range are kept"); err != nil {
+				slog.Error("recording backfill gap", "err", err)
+			}
+			slog.Warn("backfill reached the retention wall",
+				"contracts", ids, "unreachable", fmt.Sprintf("[%d,%d]", lo, oldest-1),
+				"took", time.Since(started).Round(time.Second))
+			return
+		default:
+			// Transient outage: wait and retry the SAME chunk. Never
+			// abandon progress over a hiccup.
+			slog.Error("backfill chunk failed on every endpoint; retrying",
+				"chunk", fmt.Sprintf("[%d,%d]", chunkStart, end), "err", lastErr)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(30 * time.Second):
+			}
+		}
+	}
+}
+
+// retryClamped fetches one clamped range across the pool.
+func (i *Ingester) retryClamped(ctx context.Context, label string,
+	watched map[string]struct{}, from, to uint32) error {
+	var lastErr error
+	for _, rpcURL := range i.cfg.RPCURLs {
+		if err := i.backfillRange(ctx, rpcURL, label, watched, from, to); err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	return lastErr
+}
+
+// poolOldest returns the lowest oldestLedger any endpoint advertises
+// (0 when nothing answers).
+func (i *Ingester) poolOldest(ctx context.Context) uint32 {
+	best := uint32(0)
+	for _, rpcURL := range i.cfg.RPCURLs {
+		oldest, err := i.oldestLedger(ctx, rpcURL)
+		if err != nil {
+			continue
+		}
+		if best == 0 || oldest < best {
+			best = oldest
+		}
+	}
+	return best
 }
 
 func (i *Ingester) backfillRange(ctx context.Context, rpcURL, contractID string,
