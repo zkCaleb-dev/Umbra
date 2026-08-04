@@ -35,6 +35,13 @@ encrypted outputs and the public-key registry.
   of the whole index. Self-hosting is the strongest trust model, so we
   made it a one-liner.
 
+## Live instance
+
+A public instance indexes the SPP + Confidential Token testnet
+deployments: **https://umbra-production-d30f.up.railway.app** — the
+status page is the root URL, the REST API is under `/v1/`, and the
+bootnode JSON-RPC facade answers `POST /`.
+
 ## Quickstart
 
 ```bash
