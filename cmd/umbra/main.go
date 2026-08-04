@@ -52,6 +52,20 @@ func run() error {
 		})
 	}
 
+	// Derived tables also self-heal on every boot: re-derivation from the
+	// raw event log is idempotent and fast at watch-list scale, so a
+	// decoder upgrade or a contract kind change becomes zero-ops —
+	// redeploy, and history stored under the old configuration turns into
+	// first-class derived data. UMBRA_SKIP_REDERIVE=true opts out (for
+	// very large datasets where boot time matters more).
+	if os.Getenv("UMBRA_SKIP_REDERIVE") != "true" {
+		if err := ingest.Rederive(ctx, ingest.RederiveConfig{
+			Store: st, Network: cfg.Network, Kinds: cfg.ContractKinds(),
+		}); err != nil {
+			return err
+		}
+	}
+
 	ing := ingest.New(cfg, st)
 	srv := api.New(cfg, st, ing)
 
