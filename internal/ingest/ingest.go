@@ -15,6 +15,7 @@ import (
 
 	"github.com/zkCaleb-dev/umbra/internal/config"
 	"github.com/zkCaleb-dev/umbra/internal/extract"
+	"github.com/zkCaleb-dev/umbra/internal/registry"
 	"github.com/zkCaleb-dev/umbra/internal/store"
 
 	"github.com/stellar/go-stellar-sdk/ingest/ledgerbackend"
@@ -37,28 +38,37 @@ type Status struct {
 
 // Ingester runs the ledger loop.
 type Ingester struct {
-	cfg     *config.Config
-	st      *store.Store
-	watched map[string]struct{}
-	kinds   map[string]config.ContractKind
+	cfg *config.Config
+	st  *store.Store
+	reg *registry.Registry
+	// reconcileCh wakes the coverage reconciler when the watch set grows
+	// at runtime (buffered: a burst of registrations coalesces into one
+	// pass, which recomputes pending work from the coverage table anyway).
+	reconcileCh chan struct{}
 
 	mu        sync.RWMutex
 	status    Status
 	statusSet bool
 }
 
-// New builds an Ingester.
-func New(cfg *config.Config, st *store.Store) *Ingester {
-	kinds := cfg.ContractKinds()
-	watched := make(map[string]struct{}, len(kinds))
-	for id := range kinds {
-		watched[id] = struct{}{}
-	}
+// New builds an Ingester. The registry is the live watch set — the loop
+// reads a fresh snapshot per ledger, so runtime registrations take
+// effect without a restart.
+func New(cfg *config.Config, st *store.Store, reg *registry.Registry) *Ingester {
 	return &Ingester{
-		cfg:     cfg,
-		st:      st,
-		watched: watched,
-		kinds:   kinds,
+		cfg:         cfg,
+		st:          st,
+		reg:         reg,
+		reconcileCh: make(chan struct{}, 1),
+	}
+}
+
+// NotifyChange wakes the coverage reconciler (registry change callback).
+// Never blocks.
+func (i *Ingester) NotifyChange() {
+	select {
+	case i.reconcileCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -84,13 +94,13 @@ func (i *Ingester) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	slog.Info("ingestion starting", "from_ledger", start, "contracts", len(i.watched))
+	slog.Info("ingestion starting", "from_ledger", start,
+		"contracts", len(i.reg.Snapshot().Contracts))
 
-	// Contracts added after the fact get their missing history via
-	// bounded background jobs; the live loop is never blocked by them.
-	for _, job := range i.reconcileCoverage(ctx, start) {
-		go job(ctx)
-	}
+	// Contracts added after the fact — at boot via the file, at runtime
+	// via POST /v1/contracts — get their missing history from a single
+	// reconciler goroutine; the live loop is never blocked by it.
+	go i.coverageReconciler(ctx, start)
 
 	endpointIdx := 0
 	// coldFailures counts consecutive endpoints that could not serve even
@@ -219,13 +229,16 @@ func (i *Ingester) runOnEndpoint(ctx context.Context, rpcURL string, start *uint
 }
 
 // processLedger extracts, derives and commits one ledger atomically.
+// The watch set is re-read per ledger: one atomic pointer load, so a
+// contract registered a second ago is already in this ledger's filter.
 func (i *Ingester) processLedger(ctx context.Context, meta xdr.LedgerCloseMeta) error {
-	events, err := extract.FromLedger(ctx, i.cfg.Passphrase(), i.watched, meta)
+	snap := i.reg.Snapshot()
+	events, err := extract.FromLedger(ctx, i.cfg.Passphrase(), snap.Watched, meta)
 	if err != nil {
 		return fmt.Errorf("extracting ledger %d: %w", meta.LedgerSequence(), err)
 	}
 
-	rows, derived, err := i.renderRows(events)
+	rows, derived, err := i.renderRows(events, snap.Kinds)
 	if err != nil {
 		return err
 	}
@@ -267,7 +280,7 @@ func (i *Ingester) resume(ctx context.Context) (uint32, string, error) {
 		slog.Info("resuming from persisted cursor", "last_ledger", ledger)
 		return ledger + 1, hash, nil
 	}
-	start := i.cfg.StartLedger()
+	start := i.reg.Snapshot().MinStart
 	if start == 0 {
 		return 0, "", fmt.Errorf("no cursor and no contract declares start_ledger — refusing to guess")
 	}

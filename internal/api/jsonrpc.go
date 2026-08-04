@@ -60,11 +60,11 @@ type rpcResponse struct {
 }
 
 type getEventsParams struct {
-	StartLedger uint32          `json:"startLedger"`
-	EndLedger   uint32          `json:"endLedger"`
-	Filters     []eventFilter   `json:"filters"`
-	Pagination  *rpcPagination  `json:"pagination"`
-	XDRFormat   string          `json:"xdrFormat"`
+	StartLedger uint32         `json:"startLedger"`
+	EndLedger   uint32         `json:"endLedger"`
+	Filters     []eventFilter  `json:"filters"`
+	Pagination  *rpcPagination `json:"pagination"`
+	XDRFormat   string         `json:"xdrFormat"`
 }
 
 type eventFilter struct {
@@ -250,7 +250,7 @@ func (s *Server) rpcGetEvents(r *http.Request, raw json.RawMessage) (any, *rpcEr
 		nextCursor = formatRPCCursor2(last.Ledger, last.TxIndex, last.EventIndex)
 	}
 
-	oldest, oldestTime, err := s.st.Coverage(r.Context(), s.cfg.Network, s.cfg.StartLedger())
+	oldest, oldestTime, err := s.st.Coverage(r.Context(), s.cfg.Network, s.reg.Snapshot().MinStart)
 	if err != nil {
 		slog.Error("jsonrpc coverage query", "err", err)
 		return nil, &rpcError{Code: codeInternal, Message: "internal error"}
@@ -274,8 +274,9 @@ func (s *Server) rpcGetEvents(r *http.Request, raw json.RawMessage) (any, *rpcEr
 // configured contracts.
 func (s *Server) resolveFilters(filters []eventFilter) ([]string, [][]string, *rpcError) {
 	if len(filters) == 0 {
-		ids := make([]string, 0, len(s.cfg.Deployments.Contracts))
-		for _, ct := range s.cfg.Deployments.Contracts {
+		snap := s.reg.Snapshot()
+		ids := make([]string, 0, len(snap.Contracts))
+		for _, ct := range snap.Contracts {
 			ids = append(ids, ct.ID)
 		}
 		return ids, nil, nil

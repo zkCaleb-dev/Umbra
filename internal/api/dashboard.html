@@ -69,7 +69,25 @@
 
 <h2>Indexed contracts</h2>
 <div class="card" style="padding:6px 8px">
-  <table id="contracts"><tr><th>Label</th><th>Kind</th><th>Contract</th><th>Since ledger</th></tr></table>
+  <table id="contracts"><tr><th>Label</th><th>Kind</th><th>Contract</th><th>Since ledger</th><th>Source</th></tr></table>
+</div>
+
+<h2>Index your contract</h2>
+<div class="card">
+  <div style="color:var(--ink-2);font-size:13px;margin-bottom:10px">
+    Paste a testnet contract id — Umbra classifies it from its on-chain spec,
+    indexes it live from now on, and backfills whatever history the RPC pool
+    still retains. No signup, no restart.
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <input id="reg-id" placeholder="C…" maxlength="56"
+           style="flex:2 1 340px;padding:7px 10px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,monospace;font-size:12px">
+    <input id="reg-label" placeholder="label (optional)" maxlength="120"
+           style="flex:1 1 140px;padding:7px 10px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:13px">
+    <button onclick="registerContract()"
+            style="padding:7px 16px;background:var(--card);color:var(--accent);border:1px solid var(--accent);border-radius:6px;cursor:pointer;font-size:13px">Index it</button>
+  </div>
+  <div id="reg-out" style="color:var(--ink-2);font-size:13px;margin-top:8px"></div>
 </div>
 
 <footer>
@@ -133,8 +151,8 @@ async function refresh() {
     });
 
     const rows = (st.contracts || []).map(c =>
-      `<tr><td>${c.label || ''}</td><td>${c.kind}</td><td class="mono">${c.id}</td><td>${fmt(c.start_ledger)}</td></tr>`).join('');
-    $('contracts').innerHTML = '<tr><th>Label</th><th>Kind</th><th>Contract</th><th>Since ledger</th></tr>' + rows;
+      `<tr><td>${c.label || ''}</td><td>${c.kind}</td><td class="mono">${c.id}</td><td>${fmt(c.start_ledger)}</td><td>${c.source || 'config'}</td></tr>`).join('');
+    $('contracts').innerHTML = '<tr><th>Label</th><th>Kind</th><th>Contract</th><th>Since ledger</th><th>Source</th></tr>' + rows;
   } catch (e) {
     $('live').textContent = 'unreachable';
     $('live').className = 'pill stale';
@@ -142,6 +160,24 @@ async function refresh() {
 }
 refresh();
 setInterval(refresh, 5000);
+
+async function registerContract() {
+  const out = $('reg-out');
+  const id = $('reg-id').value.trim();
+  out.textContent = 'classifying + registering…';
+  try {
+    const resp = await fetch('/v1/contracts', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id, label: $('reg-label').value.trim()}),
+    });
+    const text = await resp.text();
+    if (!resp.ok) { out.textContent = '✗ ' + text.trim(); return; }
+    const r = JSON.parse(text);
+    out.textContent = `✓ ${r.id} indexed as ${r.kind} (${r.classification}) — backfill: ${r.backfill}`;
+    refresh();
+  } catch (e) { out.textContent = '✗ ' + e; }
+}
 </script>
 </body>
 </html>

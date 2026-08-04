@@ -111,20 +111,20 @@ func permute(s *[4]*big.Int) {
 // matmul4 applies the external 4x4 matrix circ(5,7,1,3) in place, using
 // Barretenberg's addition chain.
 func matmul4(s *[4]*big.Int) {
-	t0 := new(big.Int).Add(s[0], s[1])                  // A+B
-	t1 := new(big.Int).Add(s[2], s[3])                  // C+D
-	t2 := new(big.Int).Lsh(s[1], 1)                     // 2B
-	t2.Add(t2, t1)                                      // 2B+C+D
-	t3 := new(big.Int).Lsh(s[3], 1)                     // 2D
-	t3.Add(t3, t0)                                      // 2D+A+B
-	t4 := new(big.Int).Lsh(t1, 2)                       // 4C+4D
-	t4.Add(t4, t3)                                      // A+B+4C+6D
-	t5 := new(big.Int).Lsh(t0, 2)                       // 4A+4B
-	t5.Add(t5, t2)                                      // 4A+6B+C+D
-	s[0].Add(t3, t5).Mod(s[0], FrModulus)               // 5A+7B+C+3D
-	s[1].Set(t5.Mod(t5, FrModulus))                     // 4A+6B+C+D
-	s[2].Add(t2, t4).Mod(s[2], FrModulus)               // A+3B+5C+7D
-	s[3].Set(t4.Mod(t4, FrModulus))                     // A+B+4C+6D
+	t0 := new(big.Int).Add(s[0], s[1])    // A+B
+	t1 := new(big.Int).Add(s[2], s[3])    // C+D
+	t2 := new(big.Int).Lsh(s[1], 1)       // 2B
+	t2.Add(t2, t1)                        // 2B+C+D
+	t3 := new(big.Int).Lsh(s[3], 1)       // 2D
+	t3.Add(t3, t0)                        // 2D+A+B
+	t4 := new(big.Int).Lsh(t1, 2)         // 4C+4D
+	t4.Add(t4, t3)                        // A+B+4C+6D
+	t5 := new(big.Int).Lsh(t0, 2)         // 4A+4B
+	t5.Add(t5, t2)                        // 4A+6B+C+D
+	s[0].Add(t3, t5).Mod(s[0], FrModulus) // 5A+7B+C+3D
+	s[1].Set(t5.Mod(t5, FrModulus))       // 4A+6B+C+D
+	s[2].Add(t2, t4).Mod(s[2], FrModulus) // A+3B+5C+7D
+	s[3].Set(t4.Mod(t4, FrModulus))       // A+B+4C+6D
 }
 
 // matmulInternal4 applies the internal linear layer in place:

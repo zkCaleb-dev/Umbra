@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/zkCaleb-dev/umbra/internal/config"
 	"github.com/zkCaleb-dev/umbra/internal/decode"
 	"github.com/zkCaleb-dev/umbra/internal/extract"
 	"github.com/zkCaleb-dev/umbra/internal/store"
@@ -14,16 +15,42 @@ import (
 	"github.com/stellar/go-stellar-sdk/ingest/ledgerbackend"
 )
 
-// reconcileCoverage compares each configured contract's declared
-// start_ledger with its recorded coverage and schedules backfills for
-// the missing history. Called once at startup, before the live loop:
+// coverageReconciler owns all backfill work in one goroutine: a pass at
+// startup, then another whenever NotifyChange signals that the watch
+// set grew. Serializing here keeps concurrent registrations from
+// double-fetching overlapping ranges — each pass recomputes what is
+// pending from the coverage table, so coalesced signals lose nothing.
+func (i *Ingester) coverageReconciler(ctx context.Context, loopStart uint32) {
+	for {
+		// A contract registered mid-run is only covered by the live loop
+		// from the CURRENT position onward, not from where the loop
+		// started — use the freshest cursor as the conservative bound.
+		pos := loopStart
+		if st, ok := i.Status(); ok {
+			pos = st.LastLedger + 1
+		}
+		for _, job := range i.reconcileCoverage(ctx, pos) {
+			job(ctx)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-i.reconcileCh:
+		}
+	}
+}
+
+// reconcileCoverage compares each registered contract's declared
+// start_ledger with its recorded coverage and returns backfill jobs for
+// the missing history:
 //
 //   - fresh database: every contract is covered from the loop's start —
 //     record it and move on;
-//   - contract added to a running instance: the loop only sees it from
-//     the current cursor onward, so the range [start_ledger, cursor] is
-//     fetched by a bounded background job that lowers covered_from when
-//     it finishes. Interrupted backfills resume on next boot.
+//   - contract added later (file edit or runtime registration): the
+//     live loop only sees it from the current cursor onward, so the
+//     range [start_ledger, cursor] is fetched by a bounded job that
+//     lowers covered_from as it goes. Interrupted backfills resume on
+//     the next pass or boot.
 func (i *Ingester) reconcileCoverage(ctx context.Context, loopStart uint32) []func(context.Context) {
 	type pending struct {
 		id   string
@@ -32,7 +59,7 @@ func (i *Ingester) reconcileCoverage(ctx context.Context, loopStart uint32) []fu
 	var todo []pending
 	var lo, hi uint32
 
-	for _, ct := range i.cfg.Deployments.Contracts {
+	for _, ct := range i.reg.Snapshot().Contracts {
 		covered, known, err := i.st.CoveredFrom(ctx, ct.ID)
 		if err != nil {
 			slog.Error("reading coverage", "contract", ct.ID, "err", err)
@@ -194,6 +221,13 @@ func (i *Ingester) retryClamped(ctx context.Context, label string,
 	return lastErr
 }
 
+// PoolOldest returns the lowest oldestLedger any endpoint advertises (0
+// when nothing answers) — the registration default for "save everything
+// still reachable".
+func (i *Ingester) PoolOldest(ctx context.Context) uint32 {
+	return i.poolOldest(ctx)
+}
+
 // poolOldest returns the lowest oldestLedger any endpoint advertises
 // (0 when nothing answers).
 func (i *Ingester) poolOldest(ctx context.Context) uint32 {
@@ -238,7 +272,7 @@ func (i *Ingester) backfillRange(ctx context.Context, rpcURL, contractID string,
 		if len(events) == 0 {
 			continue
 		}
-		rows, derived, err := i.renderRows(events)
+		rows, derived, err := i.renderRows(events, i.reg.Snapshot().Kinds)
 		if err != nil {
 			return err
 		}
@@ -251,8 +285,9 @@ func (i *Ingester) backfillRange(ctx context.Context, rpcURL, contractID string,
 }
 
 // renderRows converts extracted events into store rows + derived rows
-// (shared by the live loop and backfill).
-func (i *Ingester) renderRows(events []extract.Event) ([]store.RawEvent, store.Derived, error) {
+// (shared by the live loop and backfill). kinds comes from the caller's
+// registry snapshot so both paths derive with the current decoders.
+func (i *Ingester) renderRows(events []extract.Event, kinds map[string]config.ContractKind) ([]store.RawEvent, store.Derived, error) {
 	rows := make([]store.RawEvent, 0, len(events))
 	for idx := range events {
 		ev := &events[idx]
@@ -271,5 +306,5 @@ func (i *Ingester) renderRows(events []extract.Event) ([]store.RawEvent, store.D
 			TopicsJSON: topics, DataJSON: data, RawXDR: ev.RawXDR,
 		})
 	}
-	return rows, decode.Derive(i.kinds, events), nil
+	return rows, decode.Derive(kinds, events), nil
 }

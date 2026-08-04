@@ -22,6 +22,7 @@ import (
 
 	"github.com/zkCaleb-dev/umbra/internal/config"
 	"github.com/zkCaleb-dev/umbra/internal/ingest"
+	"github.com/zkCaleb-dev/umbra/internal/registry"
 	"github.com/zkCaleb-dev/umbra/internal/store"
 	"github.com/zkCaleb-dev/umbra/internal/verify"
 )
@@ -34,11 +35,13 @@ const (
 //go:embed dashboard.html
 var dashboardHTML []byte
 
-// Server is the HTTP read API.
+// Server is the HTTP read API plus the one write it allows: contract
+// registration.
 type Server struct {
 	cfg *config.Config
 	st  *store.Store
 	ing *ingest.Ingester
+	reg *registry.Registry
 
 	cpMu    sync.Mutex
 	cpCache map[string]cachedCheckpoint
@@ -57,8 +60,8 @@ type cachedCheckpoint struct {
 const checkpointTTL = 60 * time.Second
 
 // New builds the server.
-func New(cfg *config.Config, st *store.Store, ing *ingest.Ingester) *Server {
-	return &Server{cfg: cfg, st: st, ing: ing, cpCache: map[string]cachedCheckpoint{}}
+func New(cfg *config.Config, st *store.Store, ing *ingest.Ingester, reg *registry.Registry) *Server {
+	return &Server{cfg: cfg, st: st, ing: ing, reg: reg, cpCache: map[string]cachedCheckpoint{}}
 }
 
 // Run serves until ctx is done.
@@ -80,6 +83,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /v1/tokens/{id}/transfers", s.handleTransfers)
 	mux.HandleFunc("GET /v1/pools/{id}/checkpoint", s.handleCheckpoint)
 	mux.HandleFunc("GET /v1/ct/{token}/history/{address}", s.handleCTHistory)
+	mux.HandleFunc("POST /v1/contracts", s.handleRegisterContract)
 	// Bootnode-compatible JSON-RPC surface (see jsonrpc.go).
 	mux.HandleFunc("POST /{$}", s.handleJSONRPC)
 	// Human-facing status page.
@@ -151,10 +155,27 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp.Gaps = gaps
-	for _, ct := range s.cfg.Deployments.Contracts {
-		resp.Contracts = append(resp.Contracts, map[string]any{
-			"id": ct.ID, "kind": ct.Kind, "label": ct.Label, "start_ledger": ct.StartLedger,
-		})
+
+	// Per-contract observability: coverage floor and which event names
+	// were actually seen — unrecognized names are the tell that a
+	// decoder ignores something the contract emits.
+	names, err := s.st.EventNameCounts(r.Context())
+	if err != nil {
+		s.fail(w, "counting event names", err)
+		return
+	}
+	for _, ct := range s.reg.Snapshot().Contracts {
+		entry := map[string]any{
+			"id": ct.ID, "kind": ct.Kind, "label": ct.Label,
+			"start_ledger": ct.StartLedger, "source": ct.Source,
+		}
+		if covered, known, err := s.st.CoveredFrom(r.Context(), ct.ID); err == nil && known {
+			entry["covered_from"] = covered
+		}
+		if n := names[ct.ID]; len(n) > 0 {
+			entry["events"] = n
+		}
+		resp.Contracts = append(resp.Contracts, entry)
 	}
 	s.ok(w, resp)
 }
@@ -167,7 +188,7 @@ func (s *Server) handlePools(w http.ResponseWriter, r *http.Request) {
 		Stats       *store.PoolStats `json:"stats"`
 	}
 	out := []poolResp{}
-	for _, ct := range s.cfg.Deployments.Contracts {
+	for _, ct := range s.reg.Snapshot().Contracts {
 		if ct.Kind != config.KindSPPPool {
 			continue
 		}
@@ -298,14 +319,10 @@ func (s *Server) handleCTHistory(w http.ResponseWriter, r *http.Request) {
 	s.ok(w, page)
 }
 
-// watchedContract reports whether id is configured, and its kind.
+// watchedContract reports whether id is registered, and its kind.
 func (s *Server) watchedContract(id string) (config.ContractKind, bool) {
-	for _, ct := range s.cfg.Deployments.Contracts {
-		if ct.ID == id {
-			return ct.Kind, true
-		}
-	}
-	return "", false
+	kind, ok := s.reg.Snapshot().Kinds[id]
+	return kind, ok
 }
 
 // handleCheckpoint recomputes the pool's Merkle root from the indexed
@@ -360,13 +377,11 @@ func (s *Server) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
 	s.ok(w, cp)
 }
 
-// knownPool validates a path pool id against the configured spp-pool set
+// knownPool validates a path pool id against the registered spp-pool set
 // — the API never turns user input into arbitrary queries.
 func (s *Server) knownPool(id string) (string, bool) {
-	for _, ct := range s.cfg.Deployments.Contracts {
-		if ct.Kind == config.KindSPPPool && ct.ID == id {
-			return ct.ID, true
-		}
+	if kind, ok := s.reg.Snapshot().Kinds[id]; ok && kind == config.KindSPPPool {
+		return id, true
 	}
 	return "", false
 }

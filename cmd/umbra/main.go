@@ -13,6 +13,7 @@ import (
 	"github.com/zkCaleb-dev/umbra/internal/api"
 	"github.com/zkCaleb-dev/umbra/internal/config"
 	"github.com/zkCaleb-dev/umbra/internal/ingest"
+	"github.com/zkCaleb-dev/umbra/internal/registry"
 	"github.com/zkCaleb-dev/umbra/internal/store"
 	"github.com/zkCaleb-dev/umbra/internal/view"
 
@@ -52,11 +53,19 @@ func run() error {
 	}
 	defer st.Close()
 
+	// The registry is the live watch set: the deployments file seeds it,
+	// POST /v1/contracts grows it at runtime, and the contracts table
+	// carries API registrations across restarts.
+	reg, err := registry.Load(ctx, st, cfg.Deployments.Contracts)
+	if err != nil {
+		return err
+	}
+
 	// `umbra rederive` rebuilds every derived table from the raw event
 	// log and exits — run it after adding or fixing a decoder.
 	if len(os.Args) > 1 && os.Args[1] == "rederive" {
 		return ingest.Rederive(ctx, ingest.RederiveConfig{
-			Store: st, Network: cfg.Network, Kinds: cfg.ContractKinds(),
+			Store: st, Network: cfg.Network, Kinds: reg.Snapshot().Kinds,
 		})
 	}
 
@@ -68,14 +77,15 @@ func run() error {
 	// very large datasets where boot time matters more).
 	if os.Getenv("UMBRA_SKIP_REDERIVE") != "true" {
 		if err := ingest.Rederive(ctx, ingest.RederiveConfig{
-			Store: st, Network: cfg.Network, Kinds: cfg.ContractKinds(),
+			Store: st, Network: cfg.Network, Kinds: reg.Snapshot().Kinds,
 		}); err != nil {
 			return err
 		}
 	}
 
-	ing := ingest.New(cfg, st)
-	srv := api.New(cfg, st, ing)
+	ing := ingest.New(cfg, st, reg)
+	reg.SetOnChange(ing.NotifyChange)
+	srv := api.New(cfg, st, ing, reg)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return ing.Run(gctx) })

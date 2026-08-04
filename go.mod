@@ -6,6 +6,7 @@ require (
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/stellar/go-stellar-sdk v0.6.0
+	github.com/stellar/go-xdr v0.0.0-20260529210834-0bf8f4956364
 	golang.org/x/sync v0.22.0
 )
 
@@ -70,7 +71,6 @@ require (
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/segmentio/go-loggly v0.5.1-0.20171222203950-eb91657e62b2 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/stellar/go-xdr v0.0.0-20260529210834-0bf8f4956364 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	go.opencensus.io v0.24.0 // indirect

@@ -29,10 +29,10 @@ type Payload struct {
 // payloadAliases maps every accepted JSON key to its canonical field.
 var payloadAliases = map[string]string{
 	"r_e": "r_e", "r_e_point": "r_e",
-	"sigma":   "sigma",
-	"sigma_a": "sigma_a",
-	"b_tilde": "b_tilde",
-	"v_tilde": "v_tilde",
+	"sigma":             "sigma",
+	"sigma_a":           "sigma_a",
+	"b_tilde":           "b_tilde",
+	"v_tilde":           "v_tilde",
 	"live_until_ledger": "live_until_ledger",
 	// Auditor-channel fields: recognized so unknown-key detection below
 	// stays meaningful, but not decrypted — the statement never has the
