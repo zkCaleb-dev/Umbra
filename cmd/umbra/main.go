@@ -14,6 +14,7 @@ import (
 	"github.com/zkCaleb-dev/umbra/internal/config"
 	"github.com/zkCaleb-dev/umbra/internal/ingest"
 	"github.com/zkCaleb-dev/umbra/internal/store"
+	"github.com/zkCaleb-dev/umbra/internal/view"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -30,6 +31,13 @@ func main() {
 func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// `umbra view` is a pure API client — keys stay local, nothing needs
+	// Postgres or a deployments file — so it dispatches before config
+	// and store come up.
+	if len(os.Args) > 1 && os.Args[1] == "view" {
+		return view.Main(ctx, os.Args[2:])
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
