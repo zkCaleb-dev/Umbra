@@ -323,7 +323,7 @@
   </div>
 </section>
 
-<button class="go" id="go" onclick="decrypt()" disabled>Decrypt my statement</button>
+<button class="go" id="go" onclick="decrypt()" disabled>View my statement</button>
 <div id="status" role="status"></div>
 
 <div id="result">
@@ -612,8 +612,7 @@ function seedMode() {
 }
 
 function updateGoLabel() {
-  $('go').textContent = (!seedMode() && walletAddress)
-    ? 'Sign with Freighter & decrypt' : 'Decrypt my statement';
+  $('go').textContent = seedMode() ? 'View & decrypt my statement' : 'View my statement';
 }
 
 function setStatus(msg, err) {
@@ -671,52 +670,43 @@ async function registerToken() {
   }
 }
 
-// ===== the flow =====
+// ===== the flow (public-first) =====
+// Cached across the public → unlocked transition so "unlock" doesn't refetch.
+let ctx = null; // { token, account, events, onchain, onchainNote }
+
 async function decrypt() {
   if (!wasmReady) return;
   const token = tokenId();
   if (!/^C[A-Z2-7]{55}$/.test(token)) { setStatus('pick a valid token contract (C…)', true); return; }
-  $('result').className = '';
-  $('result').style.display = 'none';
   $('go').disabled = true;
   try {
-    setStatus('deriving keys locally…');
-    let derived;
+    // 1 · resolve the account WITHOUT needing a key. Seed → derive (we
+    // then also hold the key); wallet → the connected address (no signature yet).
+    let account, haveKey = false;
     const seed = $('seed').value.trim().toUpperCase();
     if (seedMode()) {
       if (!/^S[A-Z2-7]{55}$/.test(seed)) throw 'enter a valid testnet secret key (S…)';
-      derived = umbraDeriveFromSeed(seed, token);
+      const d = umbraDeriveFromSeed(seed, token);
+      if (d.error) throw d.error;
+      account = d.account; haveKey = true;
     } else {
       if (!walletAddress && !(await connectWallet())) {
-        throw 'connect Freighter above, or use a disposable testnet key';
+        throw 'connect your wallet in the top bar, or use a disposable testnet key';
       }
-      setStatus('waiting for the Freighter signature…');
-      const msg = umbraDerivationMessage(token, walletAddress);
-      const signed = await fr().signMessage(msg, {address: walletAddress});
-      if (signed?.error) throw signed.error.message || 'Freighter rejected the signature';
-      let sig = signed?.signedMessage ?? signed;
-      if (sig && typeof sig === 'object') {
-        // Normalize across API versions: Buffer-JSON, typed array, etc.
-        const bytes = sig.data ? new Uint8Array(sig.data) : (sig instanceof Uint8Array ? sig : null);
-        if (bytes) sig = btoa(String.fromCharCode(...bytes));
-      }
-      derived = umbraDeriveFromSignature(String(sig), token, walletAddress);
+      account = walletAddress;
     }
-    if (derived.error) throw derived.error;
-    const account = derived.account;
     $('acct').textContent = account;
 
-    setStatus('downloading your encrypted history…');
+    // 2 · download the (public) ciphertext history + the public on-chain record.
+    setStatus('downloading the encrypted history…');
     const events = [];
     let since = 0;
     for (;;) {
       const resp = await fetch(`${API}/v1/ct/${token}/history/${account}?since_ledger=${since}&limit=5000`);
       if (resp.status === 404) {
-        // Unknown contract: surface the index-it panel (normally shown
-        // proactively; this is the fallback when status was stale).
         updateTokenInfo();
         $('register').style.display = 'block';
-        throw 'Umbra doesn’t index this contract yet — index it in step I, decryption starts working as history arrives.';
+        throw 'Umbra doesn’t index this contract yet — index it in step I; the statement fills in as history arrives.';
       }
       if (!resp.ok) throw 'history: ' + resp.statusText;
       const page = await resp.json();
@@ -724,27 +714,53 @@ async function decrypt() {
       if (page.next_ledger == null) break;
       since = page.next_ledger;
     }
-
-    setStatus('fetching on-chain commitments…');
-    let onchain = '';
-    let onchainNote = '';
+    let onchain = '', onchainNote = '';
     const ocResp = await fetch(`${API}/v1/ct/${token}/account/${account}`);
     if (ocResp.ok) {
       onchain = await ocResp.text();
       try { const d = JSON.parse(onchain).decimals; if (Number.isInteger(d)) decimals = d; } catch {}
     } else onchainNote = (await ocResp.text()).trim();
 
-    setStatus('decrypting locally…');
-    const out = umbraStatement(JSON.stringify(events), onchain);
-    if (out.error) throw out.error;
-    render(JSON.parse(out), events.length, onchainNote);
+    ctx = {token, account, events: JSON.stringify(events), onchain, onchainNote, count: events.length};
     localStorage.setItem('umbra-token', token);
-    setStatus('');
+
+    // 3 · public lifecycle first; if we already hold a key (seed), open it now.
+    if (haveKey) { unlockKeyed(); }
+    else { renderStatement(JSON.parse(umbraStatementPublic(account, ctx.events)), 'wallet'); setStatus(''); }
   } catch (e) {
     setStatus(String(e), true);
   } finally {
     $('go').disabled = false;
   }
+}
+
+// unlockKeyed runs the keyed statement (seed already derived, or wallet
+// just signed) and renders the private view.
+function unlockKeyed() {
+  const out = umbraStatement(ctx.events, ctx.onchain);
+  if (out.error) { setStatus(String(out.error), true); return; }
+  renderStatement(JSON.parse(out), 'keyed');
+  setStatus('');
+}
+
+// unlockWithFreighter signs the SEP-53 derivation message so the wallet
+// path can open private amounts, without ever exposing the secret key.
+async function unlockWithFreighter() {
+  if (!ctx) return;
+  try {
+    setStatus('waiting for the Freighter signature…');
+    const msg = umbraDerivationMessage(ctx.token, ctx.account);
+    const signed = await fr().signMessage(msg, {address: ctx.account});
+    if (signed?.error) throw signed.error.message || 'Freighter rejected the signature';
+    let sig = signed?.signedMessage ?? signed;
+    if (sig && typeof sig === 'object') {
+      const bytes = sig.data ? new Uint8Array(sig.data) : (sig instanceof Uint8Array ? sig : null);
+      if (bytes) sig = btoa(String.fromCharCode(...bytes));
+    }
+    const d = umbraDeriveFromSignature(String(sig), ctx.token, ctx.account);
+    if (d.error) throw d.error;
+    unlockKeyed();
+  } catch (e) { setStatus(String(e), true); }
 }
 
 // Amounts arrive as integer base units; scale by the underlying asset's
@@ -761,48 +777,58 @@ const fmt = s => {
   } catch { return s; }
 };
 
-function render(st, eventCount, onchainNote) {
-  $('bal-spend').textContent = st.spendable != null ? fmt(st.spendable) : 'unknown';
-  $('bal-pend').textContent = st.pending != null ? fmt(st.pending) : 'unknown';
+function renderStatement(st, mode) {
+  const keyed = st.key_state === 'match';
+  $('bal-spend').textContent = st.spendable != null ? fmt(st.spendable) : (keyed ? 'unknown' : 'private');
+  $('bal-pend').textContent = st.pending != null ? fmt(st.pending) : (keyed ? 'unknown' : 'private');
   $('bal-total').textContent = st.total != null ? fmt(st.total) : '—';
 
+  // The trust line adapts to how much the key opened.
   const v = st.verify;
   const badge = (label, verdict) => {
     if (verdict === 'match') return `<span class="badge"><span class="ringdot ok"></span>${label}</span>`;
-    if (verdict === 'mismatch') return `<span class="badge bad"><span class="ringdot bad"></span>${label} — statement and chain disagree</span>`;
-    if (verdict === 'plain') return `<span class="badge"><span class="ringdot na"></span>${label}</span>`;
-    return `<span class="badge"><span class="ringdot na"></span>${label} — n/a</span>`;
+    if (verdict === 'mismatch') return `<span class="badge bad"><span class="ringdot bad"></span>${label}</span>`;
+    return `<span class="badge"><span class="ringdot na"></span>${label}</span>`;
   };
-  if (v && v.available) {
+  if (st.key_state === 'match' && v && v.available) {
     $('verify').innerHTML =
-      badge('viewing key registered', v.pvk) +
-      badge('spendable proven', v.spend) +
-      badge('pending proven', v.receive) +
-      `<span class="at">against chain state · ledger ${v.latest_ledger}</span>`;
+      badge('viewing key ↔ registration', v.pvk) +
+      badge('spendable ↔ on-chain', v.spend) +
+      badge('pending ↔ on-chain', v.receive) +
+      `<span class="at">verified against ledger ${v.latest_ledger}</span>`;
+  } else if (st.key_state === 'mismatch') {
+    $('verify').innerHTML = badge('this key isn’t the one this account was registered with — public lifecycle shown; private amounts stay sealed', 'mismatch');
   } else {
-    $('verify').innerHTML = badge('on-chain verification unavailable' + (onchainNote ? ' — ' + onchainNote : ''), 'plain');
+    // public view — offer to unlock
+    const canWallet = mode === 'wallet' && !!walletAddress;
+    $('verify').innerHTML =
+      `<span class="badge"><span class="ringdot na"></span>public lifecycle — private amounts are sealed</span>` +
+      (canWallet ? `<button class="ghost" style="padding:6px 16px" onclick="unlockWithFreighter()">Unlock with Freighter</button>` : '');
   }
 
-  const rows = (st.entries || []).map(e => {
-    let amount = '<td class="num muted">·</td>';
-    if (e.amount != null) {
+  const cell = e => {
+    if (e.visibility === 'public' || e.visibility === 'decrypted') {
+      if (e.amount == null) return '<td class="num muted">·</td>';
       const cls = e.direction === '+' ? 'plus' : '';
-      amount = `<td class="num ${cls}">${e.direction || ''}${fmt(e.amount)}</td>`;
+      return `<td class="num ${cls}">${e.direction || ''}${fmt(e.amount)}</td>`;
     }
-    return `<tr>
+    if (e.visibility === 'private') return '<td class="num muted" title="belongs to another participant">private</td>';
+    if (e.visibility === 'locked') return '<td class="num muted" title="unlock with your key">🔒</td>';
+    return '<td class="num muted">·</td>';
+  };
+  const rows = (st.entries || []).map(e => `<tr>
       <td class="muted" style="white-space:nowrap">${e.time || e.ledger}</td>
       <td>${e.kind}</td><td class="muted">${e.role || ''}</td>
-      ${amount}<td class="note">${e.note || ''}</td></tr>`;
-  }).join('');
+      ${cell(e)}<td class="note">${e.note || ''}</td></tr>`).join('');
   $('stmt').innerHTML = '<tr><th>Time (UTC)</th><th>Kind</th><th>Role</th><th class="num">Amount</th><th>Note</th></tr>'
-    + (rows || `<tr><td colspan="5" class="muted" style="padding:20px 0">No history for this account on this token yet — ${eventCount} events checked. If the contract was just indexed, older entries are still being recovered.</td></tr>`);
+    + (rows || `<tr><td colspan="5" class="muted" style="padding:20px 0">No history for this account on this token yet${ctx ? ` — ${ctx.count} events checked` : ''}. If the contract was just indexed, older entries are still being recovered.</td></tr>`);
 
-  $('warnings').innerHTML = (st.warnings || [])
+  $('warnings').innerHTML = (st.notes || [])
     .map(w => `<div class="warnbox">⚠ ${w}</div>`).join('');
-  flashSpeedlines();
+  if (keyed) flashSpeedlines();
   $('result').style.display = 'block';
   requestAnimationFrame(() => $('result').className = 'show');
-  inkBalance();
+  if (st.spendable != null || st.pending != null) inkBalance();
 }
 </script>
 </body>

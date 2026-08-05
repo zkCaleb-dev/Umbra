@@ -47,8 +47,8 @@ func TestBuildStatementFullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(st.Warnings) != 0 {
-		t.Fatalf("unexpected warnings: %v", st.Warnings)
+	if st.KeyState != KeyMatch {
+		t.Fatalf("expected KeyMatch, got %s (notes: %v)", st.KeyState, st.Notes)
 	}
 	if st.Spendable == nil || st.Spendable.Cmp(big.NewInt(700)) != 0 {
 		t.Fatalf("spendable = %v, want 700", st.Spendable)
@@ -83,6 +83,47 @@ func TestBuildStatementFullFlow(t *testing.T) {
 	// 6 raw events, 1 duplicate → 5 entries.
 	if len(st.Entries) != 5 {
 		t.Fatalf("expected 5 entries, got %d", len(st.Entries))
+	}
+
+	// Public-first: replay with NO key builds the same lifecycle, public
+	// amounts intact, private amounts locked, balances withheld — and
+	// never reports a mismatch.
+	pub, err := BuildStatement(account, nil, shuffled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pub.KeyState != KeyNone {
+		t.Fatalf("no-key statement should be KeyNone, got %s", pub.KeyState)
+	}
+	if pub.Spendable != nil || pub.Pending != nil {
+		t.Fatal("no-key statement must not expose balances")
+	}
+	if len(pub.Entries) != len(st.Entries) {
+		t.Fatalf("public lifecycle has %d entries, keyed has %d", len(pub.Entries), len(st.Entries))
+	}
+	var pubDeposit, pubEscrow *Entry
+	for i := range pub.Entries {
+		switch pub.Entries[i].Kind {
+		case "deposit":
+			pubDeposit = &pub.Entries[i]
+		case "set_spender":
+			pubEscrow = &pub.Entries[i]
+		}
+	}
+	if pubDeposit == nil || pubDeposit.Visibility != VisPublic || pubDeposit.Amount == nil {
+		t.Fatalf("public deposit amount should survive without a key: %+v", pubDeposit)
+	}
+	if pubEscrow == nil || pubEscrow.Visibility != VisLocked || pubEscrow.Amount != nil {
+		t.Fatalf("escrowed amount should be locked without a key: %+v", pubEscrow)
+	}
+
+	// A wrong key: lifecycle still builds, but flagged mismatch, no balances.
+	bad, _ := BuildStatement(account, big.NewInt(0xbad), shuffled)
+	if bad.KeyState != KeyMismatch {
+		t.Fatalf("wrong key should be KeyMismatch, got %s", bad.KeyState)
+	}
+	if bad.Spendable != nil {
+		t.Fatal("wrong key must not expose balances")
 	}
 }
 

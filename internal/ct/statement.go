@@ -15,6 +15,11 @@ import (
 // their (b_tilde, sigma) — so a clamped history still converges on the
 // spendable side — while the receiving accumulator replays additively
 // and resets at each merge.
+//
+// Public-first: the lifecycle (kinds, roles, participants, public
+// amounts) is built with or without a viewing key. A key only ADDS the
+// private amounts on top; its absence or mismatch never breaks the
+// statement — it just leaves the private amounts locked.
 
 // Event is one history item, wire-format already parsed.
 type Event struct {
@@ -28,30 +33,54 @@ type Event struct {
 	Payload      *Payload
 }
 
-// Entry is one line of the decrypted statement.
+// Visibility classifies what an entry's amount is:
+//   - public:    on-chain in the clear (deposits, withdrawals)
+//   - decrypted: read with the viewing key
+//   - private:   belongs to another participant; not yours to read even
+//     with a valid key (e.g. a transfer you sent — the amount is for the
+//     recipient and auditors)
+//   - locked:    private and yours, but no matching key was supplied
+//   - none:      the event carries no amount (register, merge)
+const (
+	VisPublic    = "public"
+	VisDecrypted = "decrypted"
+	VisPrivate   = "private"
+	VisLocked    = "locked"
+	VisNone      = "none"
+)
+
+// Entry is one line of the statement.
 type Entry struct {
-	Ledger   uint32
-	ClosedAt time.Time
-	Kind     string
-	Role     string
-	Amount   *big.Int // nil when this key cannot read it
-	Note     string
+	Ledger     uint32
+	ClosedAt   time.Time
+	Kind       string
+	Role       string
+	Amount     *big.Int // set only when Visibility is public or decrypted
+	Visibility string
+	Note       string
 }
 
-// Statement is the decrypted view of one account's history.
+// Key state of a whole statement.
+const (
+	KeyNone     = "none"     // no viewing key supplied — public lifecycle only
+	KeyMatch    = "match"    // key opened every private entry it should
+	KeyMismatch = "mismatch" // key supplied but it does not fit this account
+)
+
+// Statement is one account's history, as readable as the key allows.
 type Statement struct {
 	Entries   []Entry
-	Spendable *big.Int // nil if never anchored
+	KeyState  string
+	Spendable *big.Int // nil unless the key opened the balance
 	Pending   *big.Int
 	// Blinding accumulators (mod q), for reconciling Commit(v, r)
 	// against the on-chain C_spend / C_receive.
 	SpendR, ReceiveR *big.Int
-	Warnings         []string
+	Notes            []string // structural anomalies only, not key misses
 }
 
-// BuildStatement replays events for account under vk. Events may arrive
-// in any order and with duplicates; emission order (ledger, tx, index)
-// is reconstructed from the event id.
+// BuildStatement replays events for account. vk may be nil — then the
+// statement is the public lifecycle with every private amount locked.
 func BuildStatement(account string, vk *big.Int, events []Event) (*Statement, error) {
 	ordered := make([]Event, 0, len(events))
 	seen := make(map[string]bool, len(events))
@@ -66,18 +95,25 @@ func BuildStatement(account string, vk *big.Int, events []Event) (*Statement, er
 		return eventOrder(ordered[i]) < eventOrder(ordered[j])
 	})
 
-	st := &Statement{}
-	r := &replay{vk: vk, account: account, st: st}
+	st := &Statement{KeyState: KeyNone}
+	r := &replay{vk: vk, hasKey: vk != nil, account: account, st: st}
 	for _, ev := range ordered {
-		if err := r.apply(ev); err != nil {
-			return nil, fmt.Errorf("event %s (%s): %w", ev.ID, ev.Kind, err)
+		r.apply(ev)
+	}
+	if r.hasKey {
+		st.KeyState = KeyMatch
+		if r.mismatch {
+			st.KeyState = KeyMismatch
 		}
 	}
-	if r.spendKnown {
-		st.Spendable, st.SpendR = r.vSpend, r.rSpend
-	}
-	if r.receiveKnown {
-		st.Pending, st.ReceiveR = r.vReceive, r.rReceive
+	// Balances are only trustworthy when the key opened every checkpoint.
+	if r.hasKey && !r.mismatch {
+		if r.spendKnown {
+			st.Spendable, st.SpendR = r.vSpend, r.rSpend
+		}
+		if r.receiveKnown {
+			st.Pending, st.ReceiveR = r.vReceive, r.rReceive
+		}
 	}
 	return st, nil
 }
@@ -96,6 +132,7 @@ func eventOrder(ev Event) uint64 {
 
 type replay struct {
 	vk      *big.Int
+	hasKey  bool
 	account string
 	st      *Statement
 
@@ -103,64 +140,68 @@ type replay struct {
 	vReceive, rReceive *big.Int
 	spendKnown         bool
 	receiveKnown       bool
+	mismatch           bool // a private entry failed to open under vk
 }
 
-func (r *replay) warnf(format string, args ...any) {
-	r.st.Warnings = append(r.st.Warnings, fmt.Sprintf(format, args...))
-}
-
-func (r *replay) entry(ev Event, role string, amount *big.Int, note string) {
+func (r *replay) entry(ev Event, role, vis string, amount *big.Int, note string) {
 	r.st.Entries = append(r.st.Entries, Entry{
 		Ledger: ev.Ledger, ClosedAt: ev.ClosedAt, Kind: ev.Kind,
-		Role: role, Amount: amount, Note: note,
+		Role: role, Amount: amount, Visibility: vis, Note: note,
 	})
 }
 
-// checkpoint overwrites the spendable accumulator from (b_tilde, sigma)
-// and returns the previous value when it was known (for amount deltas).
-func (r *replay) checkpoint(ev Event) (prev *big.Int, err error) {
-	if ev.Payload == nil || ev.Payload.BTilde == nil || ev.Payload.Sigma == nil {
-		return nil, fmt.Errorf("missing b_tilde/sigma")
+// tryCheckpoint overwrites the spendable accumulator from (b_tilde,
+// sigma). Returns the previous value (for amount deltas) and whether the
+// key opened it. Without a key it does nothing and reports locked.
+func (r *replay) tryCheckpoint(ev Event) (prev *big.Int, opened bool) {
+	if !r.hasKey || ev.Payload == nil || ev.Payload.BTilde == nil || ev.Payload.Sigma == nil {
+		r.spendKnown = false
+		return nil, false
 	}
 	v, err := DecryptBalance(r.vk, ev.Payload.Sigma, ev.Payload.BTilde)
 	if err != nil {
-		return nil, err
+		r.mismatch = true
+		r.spendKnown = false
+		return nil, false
 	}
 	if r.spendKnown {
 		prev = r.vSpend
 	}
-	r.vSpend = v
-	r.rSpend = SpendRandomness(r.vk, ev.Payload.Sigma)
-	r.spendKnown = true
-	return prev, nil
+	r.vSpend, r.rSpend, r.spendKnown = v, SpendRandomness(r.vk, ev.Payload.Sigma), true
+	return prev, true
 }
 
-// credit applies an inbound transfer to the receiving accumulator.
-// sigma is the amount salt — the event's sigma, or sigma_a for
-// spender_transfer.
-func (r *replay) credit(ev Event, sigma *big.Int) (*big.Int, error) {
-	if ev.Payload == nil || ev.Payload.RE == nil || ev.Payload.VTilde == nil || sigma == nil {
-		return nil, fmt.Errorf("missing r_e/v_tilde/salt")
+// tryCredit applies an inbound transfer to the receiving accumulator.
+func (r *replay) tryCredit(ev Event, sigma *big.Int) (v *big.Int, opened bool) {
+	if !r.hasKey || ev.Payload == nil || ev.Payload.RE == nil || ev.Payload.VTilde == nil || sigma == nil {
+		r.receiveKnown = false
+		return nil, false
 	}
 	s, err := SharedSecret(r.vk, ev.Payload.RE)
 	if err != nil {
-		return nil, err
+		r.mismatch = true
+		return nil, false
 	}
-	v, err := DecryptAmount(s, sigma, ev.Payload.VTilde)
+	v, err = DecryptAmount(s, sigma, ev.Payload.VTilde)
 	if err != nil {
-		return nil, err
+		r.mismatch = true
+		r.receiveKnown = false
+		return nil, false
 	}
 	if !r.receiveKnown {
-		r.vReceive, r.rReceive = big.NewInt(0), big.NewInt(0)
-		r.receiveKnown = true
+		r.vReceive, r.rReceive, r.receiveKnown = big.NewInt(0), big.NewInt(0), true
 	}
 	r.vReceive = new(big.Int).Add(r.vReceive, v)
 	r.rReceive = new(big.Int).Add(r.rReceive, TransferBlinding(s, sigma))
 	r.rReceive.Mod(r.rReceive, FqModulus)
-	return v, nil
+	return v, true
 }
 
-func (r *replay) apply(ev Event) error {
+// lockedOrNone picks the visibility for a private amount the viewer is
+// entitled to but could not read: locked (no/mismatched key).
+func (r *replay) lockedVis() string { return VisLocked }
+
+func (r *replay) apply(ev Event) {
 	addr := func(i int) string {
 		if i < len(ev.Addresses) {
 			return ev.Addresses[i]
@@ -177,33 +218,30 @@ func (r *replay) apply(ev Event) error {
 	switch ev.Kind {
 	case "register":
 		if addr(0) != r.account {
-			return nil
+			return
 		}
 		r.vSpend, r.rSpend = big.NewInt(0), big.NewInt(0)
 		r.vReceive, r.rReceive = big.NewInt(0), big.NewInt(0)
 		r.spendKnown, r.receiveKnown = true, true
-		r.entry(ev, "owner", nil, "account registered")
+		r.entry(ev, "owner", VisNone, nil, "account registered")
 
 	case "deposit":
 		from, to := addr(0), addr(1)
 		if to == r.account {
-			if ev.AmountPublic == nil {
-				return fmt.Errorf("deposit without public amount")
-			}
 			if !r.receiveKnown {
-				r.vReceive, r.rReceive = big.NewInt(0), big.NewInt(0)
-				r.receiveKnown = true
+				r.vReceive, r.rReceive, r.receiveKnown = big.NewInt(0), big.NewInt(0), true
 			}
-			// Deposits commit with zero blinding: C_dep = amount·G.
-			r.vReceive = new(big.Int).Add(r.vReceive, ev.AmountPublic)
-			r.entry(ev, "recipient", ev.AmountPublic, "public deposit into pending balance")
+			if ev.AmountPublic != nil { // deposits commit with zero blinding
+				r.vReceive = new(big.Int).Add(r.vReceive, ev.AmountPublic)
+			}
+			r.entry(ev, "recipient", VisPublic, ev.AmountPublic, "public deposit into pending balance")
 		} else if from == r.account {
-			r.entry(ev, "sender", ev.AmountPublic, "funded a deposit to "+short(to))
+			r.entry(ev, "sender", VisPublic, ev.AmountPublic, "funded a deposit to "+short(to))
 		}
 
 	case "merge":
 		if addr(0) != r.account {
-			return nil
+			return
 		}
 		if r.spendKnown && r.receiveKnown {
 			r.vSpend = new(big.Int).Add(r.vSpend, r.vReceive)
@@ -211,52 +249,36 @@ func (r *replay) apply(ev Event) error {
 			r.rSpend.Mod(r.rSpend, FqModulus)
 		} else {
 			r.spendKnown = false
-			r.warnf("merge at ledger %d folded an unknown accumulator; spendable unknown until the next checkpoint", ev.Ledger)
 		}
-		r.vReceive, r.rReceive = big.NewInt(0), big.NewInt(0)
-		r.receiveKnown = true
-		r.entry(ev, "owner", nil, "pending balance folded into spendable")
+		r.vReceive, r.rReceive, r.receiveKnown = big.NewInt(0), big.NewInt(0), true
+		r.entry(ev, "owner", VisNone, nil, "pending balance folded into spendable")
 
 	case "withdraw":
 		from, to := addr(0), addr(1)
 		if from != r.account {
 			if to == r.account {
-				r.entry(ev, "recipient", ev.AmountPublic, "received underlying tokens (outside the confidential balance)")
+				r.entry(ev, "recipient", VisPublic, ev.AmountPublic, "received underlying tokens (outside the confidential balance)")
 			}
-			return nil
+			return
 		}
-		prev, err := r.checkpoint(ev)
-		if err != nil {
-			r.spendKnown = false
-			r.warnf("withdraw at ledger %d: checkpoint unreadable (%v)", ev.Ledger, err)
-		}
-		_ = prev
-		r.entry(ev, "sender", ev.AmountPublic, "withdrawn to underlying tokens for "+short(to))
+		r.tryCheckpoint(ev) // updates spendable; the amount itself is public
+		r.entry(ev, "sender", VisPublic, ev.AmountPublic, "withdrawn to underlying tokens for "+short(to))
 
 	case "transfer":
 		from, to := addr(0), addr(1)
 		if from == r.account {
-			prev, err := r.checkpoint(ev)
-			if err != nil {
-				r.spendKnown = false
-				r.warnf("transfer at ledger %d: checkpoint unreadable (%v)", ev.Ledger, err)
-				r.entry(ev, "sender", nil, "sent to "+short(to)+" (checkpoint unreadable)")
+			prev, opened := r.tryCheckpoint(ev)
+			if opened && prev != nil {
+				r.entry(ev, "sender", VisDecrypted, new(big.Int).Sub(prev, r.vSpend), "sent to "+short(to))
 			} else {
-				var sent *big.Int
-				if prev != nil {
-					sent = new(big.Int).Sub(prev, r.vSpend)
-				}
-				r.entry(ev, "sender", sent, "sent to "+short(to))
+				r.entry(ev, "sender", r.lockedVis(), nil, "sent to "+short(to))
 			}
 		}
 		if to == r.account {
-			v, err := r.credit(ev, sigmaOf(ev))
-			if err != nil {
-				r.receiveKnown = false
-				r.warnf("transfer at ledger %d: inbound amount unreadable (%v)", ev.Ledger, err)
-				r.entry(ev, "recipient", nil, "received from "+short(from)+" (unreadable with this key)")
+			if v, opened := r.tryCredit(ev, sigmaOf(ev)); opened {
+				r.entry(ev, "recipient", VisDecrypted, v, "received from "+short(from))
 			} else {
-				r.entry(ev, "recipient", v, "received from "+short(from))
+				r.entry(ev, "recipient", r.lockedVis(), nil, "received from "+short(from))
 			}
 		}
 
@@ -264,76 +286,59 @@ func (r *replay) apply(ev Event) error {
 		account, spender := addr(0), addr(1)
 		if account != r.account {
 			if spender == r.account {
-				r.entry(ev, "spender", nil, "granted an allowance by "+short(account))
+				r.entry(ev, "spender", VisNone, nil, "granted an allowance by "+short(account))
 			}
-			return nil
+			return
 		}
-		prev, err := r.checkpoint(ev)
-		if err != nil {
-			r.spendKnown = false
-			r.warnf("set_spender at ledger %d: checkpoint unreadable (%v)", ev.Ledger, err)
-			r.entry(ev, "owner", nil, "escrowed an allowance to "+short(spender))
-			return nil
-		}
-		var escrowed *big.Int
-		if prev != nil {
-			escrowed = new(big.Int).Sub(prev, r.vSpend)
-		}
-		note := "escrowed to spender " + short(spender)
+		prev, opened := r.tryCheckpoint(ev)
+		note := "escrowed an allowance to " + short(spender)
 		if ev.Payload != nil && ev.Payload.LiveUntilLedger > 0 {
 			note += fmt.Sprintf(" (expires ledger %d)", ev.Payload.LiveUntilLedger)
 		}
-		r.entry(ev, "owner", escrowed, note)
+		if opened && prev != nil {
+			r.entry(ev, "owner", VisDecrypted, new(big.Int).Sub(prev, r.vSpend), note)
+		} else {
+			r.entry(ev, "owner", r.lockedVis(), nil, note)
+		}
 
 	case "revoke_spender":
 		account, spender := addr(0), addr(1)
 		if account != r.account {
 			if spender == r.account {
-				r.entry(ev, "spender", nil, "allowance revoked by "+short(account))
+				r.entry(ev, "spender", VisNone, nil, "allowance revoked by "+short(account))
 			}
-			return nil
+			return
 		}
-		prev, err := r.checkpoint(ev)
-		if err != nil {
-			r.spendKnown = false
-			r.warnf("revoke_spender at ledger %d: checkpoint unreadable (%v)", ev.Ledger, err)
-			r.entry(ev, "owner", nil, "reclaimed unspent allowance from "+short(spender))
-			return nil
+		prev, opened := r.tryCheckpoint(ev)
+		if opened && prev != nil {
+			r.entry(ev, "owner", VisDecrypted, new(big.Int).Sub(r.vSpend, prev), "reclaimed unspent allowance from "+short(spender))
+		} else {
+			r.entry(ev, "owner", r.lockedVis(), nil, "reclaimed unspent allowance from "+short(spender))
 		}
-		var reclaimed *big.Int
-		if prev != nil {
-			reclaimed = new(big.Int).Sub(r.vSpend, prev)
-		}
-		r.entry(ev, "owner", reclaimed, "reclaimed unspent allowance from "+short(spender))
 
 	case "spender_transfer":
 		spender, from, to := addr(0), addr(1), addr(2)
 		if to == r.account {
-			v, err := r.credit(ev, sigmaAOf(ev))
-			if err != nil {
-				r.receiveKnown = false
-				r.warnf("spender_transfer at ledger %d: inbound amount unreadable (%v)", ev.Ledger, err)
-				r.entry(ev, "recipient", nil, "received via spender "+short(spender)+" (unreadable with this key)")
+			if v, opened := r.tryCredit(ev, sigmaAOf(ev)); opened {
+				r.entry(ev, "recipient", VisDecrypted, v, "received from "+short(from)+" via spender "+short(spender))
 			} else {
-				r.entry(ev, "recipient", v, "received from "+short(from)+" via spender "+short(spender))
+				r.entry(ev, "recipient", r.lockedVis(), nil, "received from "+short(from)+" via spender "+short(spender))
 			}
 		}
 		if from == r.account && to != r.account {
-			// The owner's spendable was already debited at set_spender;
-			// the per-transfer amount is encrypted to the recipient and
-			// the auditors only — that asymmetry is the protocol, not a
-			// missing feature.
-			r.entry(ev, "owner", nil,
-				"spender "+short(spender)+" paid "+short(to)+" from the escrowed allowance (amount readable by recipient and auditors)")
+			// The amount is encrypted to the recipient and auditors only —
+			// intentionally not readable by the sender. That is the
+			// protocol, not a missing key.
+			r.entry(ev, "owner", VisPrivate, nil,
+				"spender "+short(spender)+" paid "+short(to)+" from the escrowed allowance")
 		}
 		if spender == r.account && from != r.account && to != r.account {
-			r.entry(ev, "spender", nil, "spent from "+short(from)+"'s allowance to "+short(to))
+			r.entry(ev, "spender", VisPrivate, nil, "spent from "+short(from)+"'s allowance to "+short(to))
 		}
 
 	default:
-		r.entry(ev, "", nil, "unrecognized event kind (ignored)")
+		r.entry(ev, "", VisNone, nil, "unrecognized event kind (ignored)")
 	}
-	return nil
 }
 
 func sigmaOf(ev Event) *big.Int {

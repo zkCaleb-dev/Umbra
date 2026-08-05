@@ -26,6 +26,7 @@ func main() {
 	js.Global().Set("umbraDerivationMessage", js.FuncOf(derivationMessage))
 	js.Global().Set("umbraDeriveFromSignature", js.FuncOf(deriveFromSignature))
 	js.Global().Set("umbraStatement", js.FuncOf(statement))
+	js.Global().Set("umbraStatementPublic", js.FuncOf(statementPublic))
 	select {}
 }
 
@@ -93,17 +94,41 @@ var credits = map[string]bool{
 	"spender_transfer/recipient": true, "revoke_spender/owner": true,
 }
 
-// statement(eventsJSON, onchainJSON) -> statement JSON string | {error}.
-// eventsJSON is the merged `events` array of the history pages;
-// onchainJSON is the /v1/ct/{token}/account/{address} response ("" to
-// skip verification).
+// statementPublic(account, eventsJSON) -> the public lifecycle, no key
+// needed. Every private amount comes back locked.
+func statementPublic(_ js.Value, args []js.Value) any {
+	events, err := parseEvents(args[1].String())
+	if err != nil {
+		return fail(err)
+	}
+	st, err := ct.BuildStatement(args[0].String(), nil, events)
+	if err != nil {
+		return fail(err)
+	}
+	return renderStatement(args[0].String(), st, "")
+}
+
+// statement(eventsJSON, onchainJSON) -> the keyed statement (private
+// amounts opened with the derived key) plus on-chain verification.
 func statement(_ js.Value, args []js.Value) any {
 	if keys == nil {
 		return fail(fmt.Errorf("derive keys first"))
 	}
+	events, err := parseEvents(args[0].String())
+	if err != nil {
+		return fail(err)
+	}
+	st, err := ct.BuildStatement(keys.Account, keys.VK, events)
+	if err != nil {
+		return fail(err)
+	}
+	return renderStatement(keys.Account, st, args[1].String())
+}
+
+func parseEvents(raw string) ([]ct.Event, error) {
 	var items []historyItem
-	if err := json.Unmarshal([]byte(args[0].String()), &items); err != nil {
-		return fail(fmt.Errorf("parsing history: %w", err))
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return nil, fmt.Errorf("parsing history: %w", err)
 	}
 	events := make([]ct.Event, 0, len(items))
 	for _, it := range items {
@@ -114,27 +139,26 @@ func statement(_ js.Value, args []js.Value) any {
 		if it.AmountPublic != nil {
 			n, ok := new(big.Int).SetString(*it.AmountPublic, 10)
 			if !ok {
-				return fail(fmt.Errorf("event %s: bad public amount", it.EventID))
+				return nil, fmt.Errorf("event %s: bad public amount", it.EventID)
 			}
 			ev.AmountPublic = n
 		}
 		p, err := ct.ParsePayload(it.Payload)
 		if err != nil {
-			return fail(fmt.Errorf("event %s: %w", it.EventID, err))
+			return nil, fmt.Errorf("event %s: %w", it.EventID, err)
 		}
 		ev.Payload = p
 		events = append(events, ev)
 	}
+	return events, nil
+}
 
-	st, err := ct.BuildStatement(keys.Account, keys.VK, events)
-	if err != nil {
-		return fail(err)
-	}
-
+func renderStatement(account string, st *ct.Statement, onchain string) any {
 	out := map[string]any{
-		"account":  keys.Account,
-		"entries":  renderEntries(st),
-		"warnings": st.Warnings,
+		"account":   account,
+		"key_state": st.KeyState,
+		"entries":   renderEntries(st),
+		"notes":     st.Notes,
 	}
 	setAmount := func(key string, v *big.Int) {
 		if v != nil {
@@ -146,11 +170,9 @@ func statement(_ js.Value, args []js.Value) any {
 	if st.Spendable != nil && st.Pending != nil {
 		out["total"] = new(big.Int).Add(st.Spendable, st.Pending).String()
 	}
-
-	if raw := args[1].String(); raw != "" {
-		out["verify"] = verify(st, raw)
+	if keys != nil && onchain != "" {
+		out["verify"] = verify(st, onchain)
 	}
-
 	blob, err := json.Marshal(out)
 	if err != nil {
 		return fail(err)
@@ -162,7 +184,8 @@ func renderEntries(st *ct.Statement) []any {
 	entries := make([]any, 0, len(st.Entries))
 	for _, e := range st.Entries {
 		entry := map[string]any{
-			"ledger": e.Ledger, "kind": e.Kind, "role": e.Role, "note": e.Note,
+			"ledger": e.Ledger, "kind": e.Kind, "role": e.Role,
+			"note": e.Note, "visibility": e.Visibility,
 		}
 		if !e.ClosedAt.IsZero() {
 			entry["time"] = e.ClosedAt.UTC().Format("2006-01-02 15:04")

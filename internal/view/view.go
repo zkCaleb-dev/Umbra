@@ -191,35 +191,39 @@ func printStatement(w io.Writer, cfg Config, account string, st *ct.Statement) {
 	fmt.Fprintf(w, "confidential statement\n")
 	fmt.Fprintf(w, "  token    %s\n", cfg.Token)
 	fmt.Fprintf(w, "  account  %s\n", account)
-	fmt.Fprintf(w, "  source   %s (server never decrypts)\n\n", cfg.APIBase)
+	fmt.Fprintf(w, "  source   %s (server never decrypts)\n", cfg.APIBase)
 
-	fmt.Fprintf(w, "  %-8s  %-16s  %-16s  %-9s  %16s  %s\n",
+	switch st.KeyState {
+	case ct.KeyNone:
+		fmt.Fprintf(w, "  view     public lifecycle — supply your viewing key to open private amounts\n\n")
+	case ct.KeyMismatch:
+		fmt.Fprintf(w, "  view     public lifecycle — this key does not match the account's on-chain\n")
+		fmt.Fprintf(w, "           registration (the app that created it may derive keys differently)\n\n")
+	default:
+		fmt.Fprintf(w, "  view     private amounts opened with your key\n\n")
+	}
+
+	fmt.Fprintf(w, "  %-8s  %-16s  %-16s  %-9s  %18s  %s\n",
 		"LEDGER", "TIME (UTC)", "KIND", "ROLE", "AMOUNT", "NOTE")
 	for _, e := range st.Entries {
 		when := "—"
 		if !e.ClosedAt.IsZero() {
 			when = e.ClosedAt.UTC().Format("2006-01-02 15:04")
 		}
-		amount := "·"
-		if e.Amount != nil {
-			human := ct.FormatAmount(e.Amount, ct.StellarAssetDecimals)
-			switch {
-			case debits[e.Kind+"/"+e.Role]:
-				amount = "-" + human
-			case credits[e.Kind+"/"+e.Role]:
-				amount = "+" + human
-			default:
-				amount = human
-			}
-		}
 		fmt.Fprintf(w, "  %-8d  %-16s  %-16s  %-9s  %18s  %s\n",
-			e.Ledger, when, e.Kind, e.Role, amount, e.Note)
+			e.Ledger, when, e.Kind, e.Role, amountCell(e), e.Note)
 	}
 
 	fmt.Fprintf(w, "\nbalances\n")
 	line := func(name string, v *big.Int) {
 		if v == nil {
-			fmt.Fprintf(w, "  %-10s unknown (no readable checkpoint)\n", name)
+			hint := "locked (connect your viewing key)"
+			if st.KeyState == ct.KeyMismatch {
+				hint = "unavailable (key does not match this account)"
+			} else if st.KeyState == ct.KeyMatch {
+				hint = "unknown (no readable checkpoint yet)"
+			}
+			fmt.Fprintf(w, "  %-10s %s\n", name, hint)
 			return
 		}
 		fmt.Fprintf(w, "  %-10s %s\n", name, ct.FormatAmount(v, ct.StellarAssetDecimals))
@@ -230,8 +234,34 @@ func printStatement(w io.Writer, cfg Config, account string, st *ct.Statement) {
 		line("total", new(big.Int).Add(st.Spendable, st.Pending))
 	}
 
-	for _, warn := range st.Warnings {
-		fmt.Fprintf(w, "\n  warning: %s\n", warn)
+	for _, n := range st.Notes {
+		fmt.Fprintf(w, "\n  note: %s\n", n)
+	}
+}
+
+// amountCell renders one entry's amount by visibility: signed number for
+// public/decrypted, a word for the private/locked cases.
+func amountCell(e ct.Entry) string {
+	switch e.Visibility {
+	case ct.VisPublic, ct.VisDecrypted:
+		if e.Amount == nil {
+			return "·"
+		}
+		human := ct.FormatAmount(e.Amount, ct.StellarAssetDecimals)
+		switch {
+		case debits[e.Kind+"/"+e.Role]:
+			return "-" + human
+		case credits[e.Kind+"/"+e.Role]:
+			return "+" + human
+		default:
+			return human
+		}
+	case ct.VisPrivate:
+		return "private"
+	case ct.VisLocked:
+		return "🔒 locked"
+	default:
+		return "·"
 	}
 }
 
@@ -253,18 +283,26 @@ func verifyOnChain(ctx context.Context, cfg Config, keys *ct.Keys, st *ct.Statem
 	}
 	fmt.Fprintf(w, "  latest ledger %d\n", latest)
 
-	check := func(name string, ok bool) {
-		verdict := "MATCH"
-		if !ok {
-			verdict = "MISMATCH — statement and chain disagree; re-run in case new events landed mid-fetch"
-		}
-		fmt.Fprintf(w, "  %-34s %s\n", name, verdict)
+	if !keys.PVK.Equal(acct.ViewingKey) {
+		fmt.Fprintf(w, "  this viewing key is not the one registered on-chain for this account.\n")
+		fmt.Fprintf(w, "  the public lifecycle above is correct; private amounts stay sealed until\n")
+		fmt.Fprintf(w, "  opened with the key the account was registered with.\n")
+		return
 	}
-	check("derived PVK vs registered key", keys.PVK.Equal(acct.ViewingKey))
+	fmt.Fprintf(w, "  %-34s MATCH\n", "viewing key ↔ on-chain registration")
 	if st.Spendable != nil {
-		check("Commit(spendable) vs C_spend", ct.Commit(st.Spendable, st.SpendR).Equal(acct.Spendable))
+		fmt.Fprintf(w, "  %-34s %s\n", "spendable ↔ C_spend commitment",
+			verdict(ct.Commit(st.Spendable, st.SpendR).Equal(acct.Spendable)))
 	}
 	if st.Pending != nil {
-		check("Commit(pending) vs C_receive", ct.Commit(st.Pending, st.ReceiveR).Equal(acct.Receiving))
+		fmt.Fprintf(w, "  %-34s %s\n", "pending ↔ C_receive commitment",
+			verdict(ct.Commit(st.Pending, st.ReceiveR).Equal(acct.Receiving)))
 	}
+}
+
+func verdict(ok bool) string {
+	if ok {
+		return "MATCH"
+	}
+	return "MISMATCH"
 }
