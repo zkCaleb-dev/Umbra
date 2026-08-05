@@ -43,6 +43,8 @@ func (s *Server) handleViewAsset(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/wasm")
 	case "wasm_exec.js", "freighter-api.min.js", "rough-notation.iife.js":
 		w.Header().Set("Content-Type", "application/javascript")
+	case "dela-gothic-one-latin.woff2":
+		w.Header().Set("Content-Type", "font/woff2")
 	default:
 		http.Error(w, "unknown asset", http.StatusNotFound)
 		return
