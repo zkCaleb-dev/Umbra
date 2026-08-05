@@ -85,16 +85,25 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /v1/ct/{token}/history/{address}", s.handleCTHistory)
 	mux.HandleFunc("GET /v1/ct/{token}/account/{address}", s.handleCTAccount)
 	mux.HandleFunc("POST /v1/contracts", s.handleRegisterContract)
-	// The in-browser statement reader (WASM build of internal/ct).
-	mux.HandleFunc("GET /view", s.handleViewPage)
+	// The in-browser statement reader (WASM build of internal/ct) IS the
+	// product page. The operational dashboard lives at /status; /view
+	// stays as a redirect so shared links keep working.
+	mux.HandleFunc("GET /view", func(w http.ResponseWriter, r *http.Request) {
+		target := "/"
+		if q := r.URL.RawQuery; q != "" {
+			target += "?" + q
+		}
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+	})
 	mux.HandleFunc("GET /view/{asset}", s.handleViewAsset)
-	// Bootnode-compatible JSON-RPC surface (see jsonrpc.go).
-	mux.HandleFunc("POST /{$}", s.handleJSONRPC)
-	// Human-facing status page.
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(dashboardHTML)
 	})
+	// Bootnode-compatible JSON-RPC surface (see jsonrpc.go).
+	mux.HandleFunc("POST /{$}", s.handleJSONRPC)
+	// The product page.
+	mux.HandleFunc("GET /{$}", s.handleViewPage)
 
 	srv := &http.Server{
 		Addr:              s.cfg.APIBind,

@@ -36,16 +36,36 @@
     box-shadow: 0 0 18px var(--moon-faint), inset 0 0 10px var(--moon-faint);
     flex: none;
   }
-  header { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
-  .word {
-    font-size: 21px; font-weight: 600; letter-spacing: -.01em; color: var(--ink);
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    margin: -48px -24px 40px; padding: 0 24px;
+    background: color-mix(in oklch, var(--surface) 88%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line-soft);
   }
-  .word a { color: inherit; text-decoration: none; }
-  .word span { color: var(--ink-3); font-weight: 400; font-size: 19px; }
-  header .tag {
-    margin-left: auto; font-size: 12.5px; color: var(--ink-2);
-    display: flex; align-items: center; gap: 8px; text-align: right;
+  .nav-inner {
+    max-width: 832px; margin: 0 auto; padding: 14px 0;
+    display: flex; align-items: center; gap: 14px;
   }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand .mark { width: 24px; height: 24px; }
+  .word { font-size: 19px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+  .nav-right .tag {
+    font-size: 12.5px; color: var(--ink-2);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .connect {
+    padding: 8px 20px; border-radius: 999px; cursor: pointer;
+    background: var(--moon); color: oklch(17% 0.02 90); border: none;
+    font: 600 13.5px var(--sans); transition: filter .15s;
+  }
+  .connect:hover { filter: brightness(1.06); }
+  .nav-banner {
+    max-width: 832px; margin: 0 auto; padding: 0 0 12px;
+    font-size: 13px; color: var(--err);
+  }
+  @media (max-width: 560px) { .nav-right .tag { display: none; } }
   .ringdot {
     width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--moon);
     box-shadow: 0 0 8px var(--moon-faint); flex: none;
@@ -178,11 +198,29 @@
 </style>
 </head>
 <body>
-<header>
-  <div class="mark" aria-hidden="true"></div>
-  <div class="word"><a href="/">Umbra</a> <span>· view</span></div>
-  <div class="tag"><span class="ringdot off" id="wasm-dot"></span><span id="wasm-tag">waking the crypto…</span></div>
-</header>
+<nav>
+  <div class="nav-inner">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"></div>
+      <div class="word">Umbra</div>
+    </div>
+    <div class="nav-right">
+      <span class="tag"><span class="ringdot off" id="wasm-dot"></span><span id="wasm-tag">waking the crypto…</span></span>
+      <button class="connect" id="connect-btn" onclick="connectWallet()">Connect</button>
+      <div id="wallet-chip" style="display:none;align-items:center;gap:9px">
+        <span class="ringdot ok"></span>
+        <span class="mono" id="wallet-addr"></span>
+        <span class="muted" id="wallet-net" style="font-size:12px"></span>
+        <button class="seedlink" onclick="disconnectWallet()">disconnect</button>
+      </div>
+    </div>
+  </div>
+  <div id="no-freighter" class="nav-banner" style="display:none">
+    Freighter isn't installed in this browser — get it at
+    <a href="https://www.freighter.app" target="_blank" rel="noopener">freighter.app</a>,
+    or use a disposable testnet key in the key step below.
+  </div>
+</nav>
 
 <h1>Your money is private.<br>Not invisible to you.</h1>
 <p class="lede">
@@ -220,22 +258,10 @@
 
 <section class="step">
   <div class="step-label"><b>II</b>Your key</div>
-  <div class="hint" style="margin:0 0 14px">Your wallet signs one fixed message and that
-    signature derives your viewing key — <em style="font-style:normal;color:var(--moon-dim)">your
-    secret key never leaves the wallet</em>, not even into this page.</div>
-  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
-    <button class="ghost" id="connect-btn" onclick="connectWallet()">Connect Freighter</button>
-    <div id="wallet-chip" style="display:none;align-items:center;gap:9px">
-      <span class="ringdot ok"></span>
-      <span class="mono" id="wallet-addr"></span>
-      <span class="muted" id="wallet-net" style="font-size:12.5px"></span>
-      <button class="seedlink" onclick="disconnectWallet()">disconnect</button>
-    </div>
-  </div>
-  <div id="no-freighter" class="hint" style="display:none;color:var(--err);margin-bottom:12px">
-    Freighter isn't installed in this browser — get it at
-    <a href="https://www.freighter.app" target="_blank" rel="noopener">freighter.app</a>,
-    or use a disposable testnet key below.</div>
+  <div class="hint" style="margin:0 0 14px" id="key-copy">Connect your wallet with the
+    button in the top bar — it signs one fixed message and that signature derives your
+    viewing key. <em style="font-style:normal;color:var(--moon-dim)">Your secret key never
+    leaves the wallet</em>, not even into this page.</div>
   <button class="seedlink" onclick="toggleSeed()">Use a disposable testnet key instead</button>
   <div id="pane-seed" style="display:none;margin-top:14px">
     <label for="seed">Testnet secret key (S…)</label>
@@ -280,7 +306,7 @@
   Pedersen commitments to compare with the contract's on-chain state — a
   mathematical proof the numbers are right, or an honest flag when they are not.
   <br><span id="net-line"></span>
-  <br><a href="/">indexer status</a> · <a href="https://github.com/zkCaleb-dev/umbra">source</a>
+  <br><a href="/status">indexer internals</a> · <a href="https://github.com/zkCaleb-dev/umbra">source</a>
 </footer>
 
 <script src="/view/freighter-api.min.js"></script>
@@ -436,6 +462,9 @@ function setWallet(addr, net) {
   $('wallet-chip').style.display = 'flex';
   $('wallet-addr').textContent = addr.slice(0, 6) + '…' + addr.slice(-6);
   $('wallet-net').textContent = net ? '· ' + net.toLowerCase() : '';
+  $('key-copy').innerHTML = 'Connected as <span class="mono">' + addr.slice(0, 6) + '…' + addr.slice(-6) +
+    '</span> — the button below asks Freighter for one signature; ' +
+    '<em style="font-style:normal;color:var(--moon-dim)">your secret key never leaves the wallet</em>.';
   if (net && net.toUpperCase() !== 'TESTNET') {
     setStatus(`Freighter is on ${net} — switch it to Testnet to read testnet tokens`, true);
   }
@@ -446,6 +475,10 @@ function disconnectWallet() {
   walletAddress = null;
   $('wallet-chip').style.display = 'none';
   $('connect-btn').style.display = '';
+  $('key-copy').innerHTML = 'Connect your wallet with the button in the top bar — it signs one ' +
+    'fixed message and that signature derives your viewing key. ' +
+    '<em style="font-style:normal;color:var(--moon-dim)">Your secret key never leaves the wallet</em>, ' +
+    'not even into this page.';
   updateGoLabel();
 }
 
