@@ -41,7 +41,7 @@ func (s *Server) handleViewAsset(w http.ResponseWriter, r *http.Request) {
 	switch name {
 	case "umbra.wasm":
 		w.Header().Set("Content-Type", "application/wasm")
-	case "wasm_exec.js", "freighter-api.min.js":
+	case "wasm_exec.js", "freighter-api.min.js", "rough-notation.iife.js":
 		w.Header().Set("Content-Type", "application/javascript")
 	default:
 		http.Error(w, "unknown asset", http.StatusNotFound)

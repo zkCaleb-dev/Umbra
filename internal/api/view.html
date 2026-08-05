@@ -79,6 +79,25 @@
   .lede { color: var(--ink-2); max-width: 56ch; margin-bottom: 56px; }
   .lede em { color: var(--moon-dim); font-style: normal; }
 
+  /* ===== manga-noir accents: screentone + ink + speed lines ===== */
+  .hero { position: relative; }
+  .screentone {
+    position: absolute; inset: -34px -40px 0; z-index: -1; pointer-events: none;
+    background-image: radial-gradient(oklch(83% 0.105 92 / 0.07) 1px, transparent 1.3px);
+    background-size: 13px 13px;
+    -webkit-mask-image: radial-gradient(120% 105% at 22% 0%, #000 25%, transparent 72%);
+    mask-image: radial-gradient(120% 105% at 22% 0%, #000 25%, transparent 72%);
+  }
+  .speedlines {
+    position: fixed; inset: 0; z-index: 40; pointer-events: none; opacity: 0;
+    background: repeating-conic-gradient(from 0deg at 50% 42%,
+      transparent 0deg 5deg, oklch(83% 0.105 92 / 0.09) 5deg 5.7deg);
+    -webkit-mask-image: radial-gradient(circle at 50% 42%, transparent 16%, #000 62%);
+    mask-image: radial-gradient(circle at 50% 42%, transparent 16%, #000 62%);
+    transition: opacity .16s ease-out;
+  }
+  .speedlines.on { opacity: 1; }
+
   /* ===== form flow ===== */
   .step { border-top: 1px solid var(--line-soft); padding: 28px 0 36px; }
   .step-label {
@@ -222,13 +241,17 @@
   </div>
 </nav>
 
-<h1>Your money is private.<br>Not invisible to you.</h1>
+<div class="hero">
+<div class="screentone" aria-hidden="true"></div>
+<h1>Your money is <span id="rn-private">private</span>.<br>Not invisible to <span id="rn-you">you</span>.</h1>
 <p class="lede">
   Umbra stores only ciphertexts. This page derives your viewing key
   <em>inside your browser</em>, decrypts what your key can read, and proves
   the result against the chain's own commitments. Nothing secret ever
   leaves this tab.
 </p>
+</div>
+<div class="speedlines" id="speedlines" aria-hidden="true"></div>
 
 <section class="step">
   <div class="step-label"><b>I</b>Token</div>
@@ -310,11 +333,39 @@
 </footer>
 
 <script src="/view/freighter-api.min.js"></script>
+<script src="/view/rough-notation.iife.js"></script>
 <script src="/view/wasm_exec.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const API = new URLSearchParams(location.search).get('api') || '';
 $('api-label').textContent = API || location.host;
+
+// ===== manga-noir ink (Rough Notation, vendored) =====
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const ink = (el, opts) => RoughNotation.annotate(el, Object.assign({
+  color: 'oklch(83% 0.105 92)', strokeWidth: 2, iterations: 2,
+  animationDuration: reduceMotion ? 0 : 850, padding: 3,
+}, opts));
+window.addEventListener('load', () => {
+  try {
+    setTimeout(() => ink($('rn-private'), {type: 'underline'}).show(), 500);
+    setTimeout(() => ink($('rn-you'), {type: 'circle', padding: 7, strokeWidth: 1.6}).show(), 1300);
+  } catch { /* accents only — never block the page */ }
+});
+let balInk = null;
+function inkBalance() {
+  try {
+    if (balInk) balInk.remove();
+    balInk = ink($('bal-spend'), {type: 'circle', padding: 11, strokeWidth: 1.6});
+    setTimeout(() => balInk.show(), reduceMotion ? 0 : 500);
+  } catch { /* accent */ }
+}
+function flashSpeedlines() {
+  if (reduceMotion) return;
+  const s = $('speedlines');
+  s.classList.add('on');
+  setTimeout(() => s.classList.remove('on'), 360);
+}
 
 // ===== wasm boot =====
 let wasmReady = false;
@@ -690,8 +741,10 @@ function render(st, eventCount, onchainNote) {
 
   $('warnings').innerHTML = (st.warnings || [])
     .map(w => `<div class="warnbox">⚠ ${w}</div>`).join('');
+  flashSpeedlines();
   $('result').style.display = 'block';
   requestAnimationFrame(() => $('result').className = 'show');
+  inkBalance();
 }
 </script>
 </body>
