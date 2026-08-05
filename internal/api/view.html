@@ -204,21 +204,23 @@
   <label for="token">Confidential token contract</label>
   <select id="token" class="mono"></select>
   <input id="token-custom" class="mono" type="text" placeholder="C…" maxlength="56"
-         style="display:none;margin-top:10px" oninput="onCustomToken()">
+         style="display:none;margin-top:10px" oninput="updateTokenInfo()">
+  <div id="token-status" style="display:none;align-items:center;gap:10px;margin-top:12px;font-size:13px;color:var(--ink-2)">
+    <div class="ring-progress" id="ts-ring" style="width:22px;height:22px;display:none"></div>
+    <span class="ringdot" id="ts-dot" style="display:none"></span>
+    <span id="ts-text"></span>
+  </div>
   <div id="register">
-    <p id="reg-copy">Umbra doesn't watch this contract yet. Index it now — it will be
+    <p id="reg-copy">Umbra doesn't watch this contract yet. Index it now — it is
     classified from its on-chain spec, live events start immediately, and
-    history is recovered from the RPC and the public archives, newest first.</p>
+    history is recovered from the RPC and the public archives, newest first.
+    No signup, no waiting for anyone.</p>
     <div class="row">
       <div>
         <label for="reg-since" style="margin-bottom:4px">history since <span class="muted">(optional, default 30 days)</span></label>
         <input id="reg-since" type="date">
       </div>
-      <button class="ghost" style="margin-top:18px" onclick="registerToken()">Index this contract</button>
-    </div>
-    <div id="reg-progress">
-      <div class="ring-progress" id="reg-ring"></div>
-      <div class="t" id="reg-text">registering…</div>
+      <button class="ghost" style="margin-top:18px" id="reg-btn" onclick="registerToken()">Index this contract</button>
     </div>
   </div>
 </section>
@@ -275,6 +277,7 @@
   WebAssembly build of Umbra's vector-tested cryptography, and recomputes the
   Pedersen commitments to compare with the contract's on-chain state — a
   mathematical proof the numbers are right, or an honest flag when they are not.
+  <br><span id="net-line"></span>
   <br><a href="/">indexer status</a> · <a href="https://github.com/zkCaleb-dev/umbra">source</a>
 </footer>
 
@@ -302,10 +305,25 @@ let wasmReady = false;
   }
 })();
 
-// ===== token list =====
-async function loadTokens() {
-  const st = await fetch(API + '/v1/status').then(r => r.json());
-  const cts = (st.contracts || []).filter(c => c.kind === 'confidential-token');
+// ===== indexer status: one source of truth for the whole page =====
+let statusCache = null;
+async function loadStatus() {
+  statusCache = await fetch(API + '/v1/status').then(r => r.json());
+  renderNetLine();
+  return statusCache;
+}
+
+function renderNetLine() {
+  const ing = statusCache?.ingestion;
+  if (!ing) return;
+  const gaps = (statusCache.gaps || []).length;
+  $('net-line').textContent =
+    `indexer at ledger ${Number(ing.last_ledger).toLocaleString('en-US')} · ` +
+    (gaps === 0 ? 'no gaps — history beyond any RPC' : `${gaps} declared gap${gaps > 1 ? 's' : ''}`);
+}
+
+function rebuildTokenSelect() {
+  const cts = (statusCache.contracts || []).filter(c => c.kind === 'confidential-token');
   const sel = $('token');
   const prev = sel.value;
   sel.innerHTML = '';
@@ -320,13 +338,86 @@ async function loadTokens() {
   custom.textContent = 'another contract…';
   sel.appendChild(custom);
   if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
-  sel.onchange = () => {
-    $('token-custom').style.display = sel.value === '__custom' ? 'block' : 'none';
-    $('register').style.display = 'none';
-  };
-  return st;
 }
-loadTokens().catch(() => setStatus('could not reach the Umbra API', true));
+
+// updateTokenInfo is the page's brain for step I: it reacts to whatever
+// contract is selected or pasted — coverage chip for indexed tokens,
+// the index-it panel for unknown ones, a clear note for non-CT ids —
+// so nobody has to hit an error to find the next action.
+function updateTokenInfo() {
+  const token = tokenId();
+  const panel = $('register'), status = $('token-status');
+  const ring = $('ts-ring'), dot = $('ts-dot'), text = $('ts-text');
+  panel.style.display = 'none';
+  status.style.display = 'none';
+  if (!statusCache || !/^C[A-Z2-7]{55}$/.test(token)) return;
+
+  const c = (statusCache.contracts || []).find(x => x.id === token);
+  status.style.display = 'flex';
+  if (!c) {
+    text.textContent = 'not indexed yet';
+    dot.style.display = ''; dot.className = 'ringdot na'; ring.style.display = 'none';
+    panel.style.display = 'block';
+    return;
+  }
+  if (c.kind !== 'confidential-token') {
+    text.textContent = `indexed as "${c.kind}" — not a confidential token`;
+    dot.style.display = ''; dot.className = 'ringdot bad'; ring.style.display = 'none';
+    return;
+  }
+  const tip = statusCache.ingestion?.last_ledger || 0;
+  const target = c.start_ledger || 0;
+  const covered = c.covered_from ?? tip;
+  if (covered <= target || tip === 0) {
+    text.textContent = `indexed · history complete since ledger ${Number(target).toLocaleString('en-US')}`;
+    dot.style.display = ''; dot.className = 'ringdot ok'; ring.style.display = 'none';
+  } else {
+    const pct = Math.max(0, Math.min(100, 100 * (tip - covered) / Math.max(1, tip - target)));
+    ring.style.display = ''; dot.style.display = 'none';
+    ring.style.setProperty('--p', pct.toFixed(1));
+    text.textContent = `recovering history, newest first — ${pct.toFixed(0)}% · decrypt works with what's already here`;
+    ensurePolling();
+  }
+}
+
+// Poll only while something on screen is in motion (a recovery in
+// progress or an unknown contract panel that a registration may flip).
+let pollTimer = null;
+function ensurePolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    try {
+      await loadStatus();
+      rebuildTokenSelect();
+      updateTokenInfo();
+      const t = tokenId();
+      const c = (statusCache.contracts || []).find(x => x.id === t);
+      const tip = statusCache.ingestion?.last_ledger || 0;
+      const done = c && c.kind === 'confidential-token' && (c.covered_from ?? tip) <= (c.start_ledger || 0);
+      if (done || !/^C[A-Z2-7]{55}$/.test(t)) { clearInterval(pollTimer); pollTimer = null; }
+    } catch { /* transient */ }
+  }, 6000);
+}
+
+// Boot: status → select → deep-link (?token= or the last one used).
+(async () => {
+  try {
+    await loadStatus();
+    rebuildTokenSelect();
+    const sel = $('token');
+    sel.onchange = () => {
+      $('token-custom').style.display = sel.value === '__custom' ? 'block' : 'none';
+      updateTokenInfo();
+    };
+    const wanted = new URLSearchParams(location.search).get('token')
+      || localStorage.getItem('umbra-token');
+    if (wanted && /^C[A-Z2-7]{55}$/.test(wanted)) {
+      if ([...sel.options].some(o => o.value === wanted)) sel.value = wanted;
+      else { sel.value = '__custom'; $('token-custom').value = wanted; $('token-custom').style.display = 'block'; }
+    }
+    updateTokenInfo();
+  } catch { setStatus('could not reach the Umbra API', true); }
+})();
 
 // ===== freighter (progressive) =====
 if (window.freighterApi?.signMessage) $('tab-freighter').style.display = '';
@@ -350,64 +441,42 @@ function tokenId() {
   const v = $('token').value;
   return v === '__custom' ? $('token-custom').value.trim().toUpperCase() : v;
 }
-function onCustomToken() { $('register').style.display = 'none'; }
 
 // ===== self-service indexing (one-page flow) =====
-let regTimer = null;
 async function registerToken() {
   const token = tokenId();
-  const body = {id: token, label: 'registered via /view'};
-  if ($('reg-since').value) body.since = $('reg-since').value;
-  $('reg-progress').style.display = 'flex';
-  $('reg-text').textContent = 'classifying from its on-chain spec…';
+  const btn = $('reg-btn');
+  btn.disabled = true;
+  btn.textContent = 'classifying on-chain…';
   try {
+    const body = {id: token, label: 'registered via /view'};
+    if ($('reg-since').value) body.since = $('reg-since').value;
     const resp = await fetch(API + '/v1/contracts', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
     });
     const text = await resp.text();
-    if (resp.status === 409) { /* already there — just track */ }
+    if (resp.status === 409) { /* already registered — the chip takes over */ }
     else if (!resp.ok) throw text.trim();
     else {
       const r = JSON.parse(text);
       if (r.kind !== 'confidential-token')
         throw `this contract classified as "${r.kind}", not a confidential token`;
     }
-    trackRecovery(token);
-  } catch (e) {
-    $('reg-progress').style.display = 'none';
-    setStatus(String(e), true);
-  }
-}
-
-// trackRecovery polls coverage and fills the eclipse ring as history
-// walks back toward the requested start.
-function trackRecovery(token) {
-  clearInterval(regTimer);
-  const tick = async () => {
-    try {
-      const st = await loadTokens();
-      const c = (st.contracts || []).find(x => x.id === token);
-      if (!c) return;
+    await loadStatus();
+    rebuildTokenSelect();
+    if ([...$('token').options].some(o => o.value === token)) {
       $('token').value = token;
       $('token-custom').style.display = 'none';
-      const tip = st.ingestion?.last_ledger || 0;
-      const target = c.start_ledger || 0;
-      const covered = c.covered_from ?? tip;
-      const total = Math.max(1, tip - target);
-      const pct = Math.max(0, Math.min(100, 100 * (tip - covered) / total));
-      $('reg-ring').style.setProperty('--p', pct.toFixed(1));
-      if (covered <= target) {
-        $('reg-text').textContent = 'history fully recovered — decrypt away';
-        clearInterval(regTimer);
-      } else {
-        $('reg-text').textContent =
-          `recovering history, newest first — ${pct.toFixed(0)}% (you can decrypt now; older entries keep appearing)`;
-      }
-    } catch { /* transient — keep polling */ }
-  };
-  tick();
-  regTimer = setInterval(tick, 5000);
+    }
+    updateTokenInfo();
+    ensurePolling();
+  } catch (e) {
+    setStatus(String(e), true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Index this contract';
+  }
 }
 
 // ===== the flow =====
@@ -447,9 +516,11 @@ async function decrypt() {
     for (;;) {
       const resp = await fetch(`${API}/v1/ct/${token}/history/${account}?since_ledger=${since}&limit=5000`);
       if (resp.status === 404) {
-        // Unknown contract: open the index-it panel instead of erroring.
+        // Unknown contract: surface the index-it panel (normally shown
+        // proactively; this is the fallback when status was stale).
+        updateTokenInfo();
         $('register').style.display = 'block';
-        throw 'Umbra doesn’t index this contract yet — index it below, then decrypt again.';
+        throw 'Umbra doesn’t index this contract yet — index it in step I, decryption starts working as history arrives.';
       }
       if (!resp.ok) throw 'history: ' + resp.statusText;
       const page = await resp.json();
@@ -469,6 +540,7 @@ async function decrypt() {
     const out = umbraStatement(JSON.stringify(events), onchain);
     if (out.error) throw out.error;
     render(JSON.parse(out), events.length, onchainNote);
+    localStorage.setItem('umbra-token', token);
     setStatus('');
   } catch (e) {
     setStatus(String(e), true);
