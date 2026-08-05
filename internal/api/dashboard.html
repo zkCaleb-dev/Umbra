@@ -4,9 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Umbra — status</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --surface: oklch(13% 0.008 88);
@@ -16,19 +13,19 @@
     --ink: oklch(93% 0.015 92);
     --ink-2: oklch(66% 0.025 90);
     --ink-3: oklch(47% 0.02 90);
-    --moon: oklch(82% 0.12 92);
+    --moon: oklch(83% 0.105 92);
     --moon-dim: oklch(68% 0.08 90);
-    --moon-faint: oklch(82% 0.12 92 / 0.14);
+    --moon-faint: oklch(83% 0.105 92 / 0.14);
     --err: oklch(62% 0.18 25);
-    --display: 'Marcellus', serif;
-    --body: 'Hanken Grotesk', ui-sans-serif, sans-serif;
+    --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+            system-ui, 'Segoe UI Variable', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
     --mono: ui-monospace, 'SF Mono', Menlo, monospace;
   }
   * { box-sizing: border-box; margin: 0; }
   html { color-scheme: dark; }
   body {
     background: var(--surface); color: var(--ink);
-    font: 15px/1.6 var(--body);
+    font: 15px/1.6 var(--sans);
     max-width: 980px; margin: 0 auto; padding: 44px 24px 64px;
   }
   .mark {
@@ -38,10 +35,7 @@
     flex: none;
   }
   header { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; flex-wrap: wrap; }
-  .word {
-    font-family: var(--display); font-size: 24px; letter-spacing: .14em;
-    text-transform: uppercase;
-  }
+  .word { font-size: 21px; font-weight: 600; letter-spacing: -.01em; }
   .pill {
     font-size: 12.5px; padding: 4px 12px; border-radius: 999px;
     border: 1px solid var(--line); color: var(--ink-2);
@@ -50,12 +44,12 @@
   .sub { color: var(--ink-2); margin-bottom: 34px; max-width: 60ch; }
 
   h2 {
-    font-size: 12px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: .18em; color: var(--ink-3); margin: 34px 0 14px;
+    font-size: 13.5px; font-weight: 600; letter-spacing: -.005em;
+    color: var(--ink-3); margin: 34px 0 14px;
   }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; }
   .tile { background: var(--well); padding: 16px 18px; }
-  .tile .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--ink-3); margin-bottom: 6px; }
+  .tile .k { font-size: 12.5px; font-weight: 500; color: var(--ink-3); margin-bottom: 6px; }
   .tile .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .tile .d { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
 
@@ -64,7 +58,7 @@
   .card .name { font-weight: 600; }
   .card .id { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); word-break: break-all; margin-top: 2px; }
   .stats { display: flex; gap: 30px; margin-top: 12px; flex-wrap: wrap; }
-  .stats .s .k { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .1em; }
+  .stats .s .k { font-size: 12px; font-weight: 500; color: var(--ink-3); }
   .stats .s .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .ok { color: var(--moon); font-size: 13px; }
   .warn { color: var(--err); font-size: 13px; }
@@ -72,12 +66,12 @@
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   td, th { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line-soft); }
   tr:last-child td { border-bottom: none; }
-  th { color: var(--ink-3); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; }
+  th { color: var(--ink-3); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
   td.mono { font-family: var(--mono); font-size: 11.5px; }
 
   input, button.act {
     padding: 10px 12px; background: var(--surface); color: var(--ink);
-    border: 1px solid var(--line); border-radius: 10px; font: 13.5px var(--body);
+    border: 1px solid var(--line); border-radius: 10px; font: 13.5px var(--sans);
   }
   input:focus { outline: none; border-color: var(--moon-dim); box-shadow: 0 0 0 3px var(--moon-faint); }
   button.act {

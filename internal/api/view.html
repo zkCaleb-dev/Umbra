@@ -4,9 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Umbra — your confidential statement</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --surface: oklch(13% 0.008 88);
@@ -16,19 +13,19 @@
     --ink: oklch(93% 0.015 92);
     --ink-2: oklch(66% 0.025 90);
     --ink-3: oklch(47% 0.02 90);
-    --moon: oklch(82% 0.12 92);
+    --moon: oklch(83% 0.105 92);
     --moon-dim: oklch(68% 0.08 90);
-    --moon-faint: oklch(82% 0.12 92 / 0.14);
+    --moon-faint: oklch(83% 0.105 92 / 0.14);
     --err: oklch(62% 0.18 25);
-    --display: 'Marcellus', serif;
-    --body: 'Hanken Grotesk', ui-sans-serif, sans-serif;
+    --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+            system-ui, 'Segoe UI Variable', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
     --mono: ui-monospace, 'SF Mono', Menlo, monospace;
   }
   * { box-sizing: border-box; margin: 0; }
   html { color-scheme: dark; }
   body {
     background: var(--surface); color: var(--ink);
-    font: 15.5px/1.65 var(--body);
+    font: 15.5px/1.65 var(--sans);
     max-width: 880px; margin: 0 auto; padding: 48px 24px 64px;
   }
 
@@ -41,11 +38,10 @@
   }
   header { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
   .word {
-    font-family: var(--display); font-size: 24px; letter-spacing: .14em;
-    text-transform: uppercase; color: var(--ink);
+    font-size: 21px; font-weight: 600; letter-spacing: -.01em; color: var(--ink);
   }
   .word a { color: inherit; text-decoration: none; }
-  .word span { color: var(--ink-3); letter-spacing: .06em; text-transform: none; font-size: 20px; }
+  .word span { color: var(--ink-3); font-weight: 400; font-size: 19px; }
   header .tag {
     margin-left: auto; font-size: 12.5px; color: var(--ink-2);
     display: flex; align-items: center; gap: 8px; text-align: right;
@@ -57,9 +53,8 @@
   .ringdot.off { border-color: var(--ink-3); box-shadow: none; }
 
   h1 {
-    font-family: var(--display); font-weight: 400;
-    font-size: clamp(28px, 5vw, 40px); line-height: 1.2;
-    letter-spacing: .01em; margin-bottom: 14px; max-width: 20ch;
+    font-weight: 700; font-size: clamp(30px, 5vw, 42px); line-height: 1.14;
+    letter-spacing: -.025em; margin-bottom: 16px; max-width: 20ch;
   }
   .lede { color: var(--ink-2); max-width: 56ch; margin-bottom: 56px; }
   .lede em { color: var(--moon-dim); font-style: normal; }
@@ -67,15 +62,15 @@
   /* ===== form flow ===== */
   .step { border-top: 1px solid var(--line-soft); padding: 28px 0 36px; }
   .step-label {
-    font-size: 12px; font-weight: 600; letter-spacing: .18em;
-    text-transform: uppercase; color: var(--ink-3); margin-bottom: 18px;
+    font-size: 13.5px; font-weight: 600; letter-spacing: -.005em;
+    color: var(--ink-3); margin-bottom: 18px;
   }
-  .step-label b { color: var(--moon-dim); font-weight: 600; margin-right: 10px; }
+  .step-label b { display: none; }
   label { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
   select, input[type=password], input[type=text], input[type=date] {
     width: 100%; padding: 12px 14px; background: var(--well); color: var(--ink);
     border: 1px solid var(--line); border-radius: 10px;
-    font: 14px/1.4 var(--body); transition: border-color .15s, box-shadow .15s;
+    font: 14px/1.4 var(--sans); transition: border-color .15s, box-shadow .15s;
   }
   select:focus, input:focus {
     outline: none; border-color: var(--moon-dim);
@@ -88,7 +83,7 @@
   .tab {
     padding: 7px 18px; border-radius: 999px; border: 1px solid var(--line);
     background: transparent; color: var(--ink-2); cursor: pointer;
-    font: 500 13.5px var(--body); transition: border-color .15s, color .15s;
+    font: 500 13.5px var(--sans); transition: border-color .15s, color .15s;
   }
   .tab:hover { color: var(--ink); }
   .tab.active { border-color: var(--moon); color: var(--moon); }
@@ -97,10 +92,10 @@
     display: block; width: 100%; padding: 15px; margin-top: 8px;
     border-radius: 999px; border: none; cursor: pointer;
     background: var(--moon); color: oklch(17% 0.02 90);
-    font: 600 15.5px var(--body); letter-spacing: .01em;
+    font: 600 15.5px var(--sans); letter-spacing: .01em;
     transition: filter .15s, box-shadow .15s;
   }
-  .go:hover:not(:disabled) { filter: brightness(1.07); box-shadow: 0 0 28px var(--moon-faint); }
+  .go:hover:not(:disabled) { filter: brightness(1.06); }
   .go:disabled { opacity: .4; cursor: default; }
   #status { color: var(--ink-2); font-size: 13.5px; margin: 14px 2px; min-height: 22px; }
   #status.err { color: var(--err); }
@@ -116,7 +111,7 @@
   .ghost {
     padding: 11px 22px; border-radius: 999px; cursor: pointer;
     background: transparent; border: 1px solid var(--moon); color: var(--moon);
-    font: 600 13.5px var(--body); transition: background .15s;
+    font: 600 13.5px var(--sans); transition: background .15s;
   }
   .ghost:hover { background: var(--moon-faint); }
   #reg-progress { display: none; align-items: center; gap: 14px; margin-top: 16px; }
@@ -142,10 +137,10 @@
     display: flex; align-items: flex-end; gap: 48px; flex-wrap: wrap;
     border-top: 1px solid var(--line-soft); padding: 34px 0 8px; margin-top: 24px;
   }
-  .summary .k { font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+  .summary .k { font-size: 13px; font-weight: 500; color: var(--ink-3); margin-bottom: 6px; }
   .summary .main .v {
     font-size: clamp(34px, 6vw, 44px); font-weight: 600; line-height: 1.1;
-    font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em;
   }
   .summary .side { display: flex; gap: 40px; padding-bottom: 6px; }
   .summary .side .v { font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-2); }
@@ -163,12 +158,12 @@
     display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
     margin: 38px 0 12px;
   }
-  .stmt-head h2 { font-family: var(--display); font-weight: 400; font-size: 21px; letter-spacing: .03em; }
+  .stmt-head h2 { font-weight: 600; font-size: 18px; letter-spacing: -.015em; }
   .stmt-head .who { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); word-break: break-all; }
   .tablewrap { overflow-x: auto; border-top: 1px solid var(--line); }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   td, th { text-align: left; padding: 11px 14px 11px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
-  th { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .14em; color: var(--ink-3); }
+  th { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
   td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 20px; }
   th.num { text-align: right; padding-right: 20px; }
   td.num.plus { color: var(--moon); }
