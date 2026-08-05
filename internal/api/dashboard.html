@@ -4,98 +4,140 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Umbra — status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --surface: #0e1116; --card: #161b22; --line: #21262d;
-    --ink: #e6edf3; --ink-2: #9aa4af; --ink-3: #6e7681;
-    --accent: #a78bfa; --good: #3fb950; --warn: #d29922;
+    --surface: oklch(13% 0.008 88);
+    --well: oklch(15.5% 0.01 88);
+    --line: oklch(25% 0.015 88);
+    --line-soft: oklch(20% 0.012 88);
+    --ink: oklch(93% 0.015 92);
+    --ink-2: oklch(66% 0.025 90);
+    --ink-3: oklch(47% 0.02 90);
+    --moon: oklch(82% 0.12 92);
+    --moon-dim: oklch(68% 0.08 90);
+    --moon-faint: oklch(82% 0.12 92 / 0.14);
+    --err: oklch(62% 0.18 25);
+    --display: 'Marcellus', serif;
+    --body: 'Hanken Grotesk', ui-sans-serif, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, monospace;
   }
   * { box-sizing: border-box; margin: 0; }
+  html { color-scheme: dark; }
   body {
     background: var(--surface); color: var(--ink);
-    font: 15px/1.5 ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
-    padding: 32px 20px; max-width: 980px; margin: 0 auto;
+    font: 15px/1.6 var(--body);
+    max-width: 980px; margin: 0 auto; padding: 44px 24px 64px;
   }
-  header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; flex-wrap: wrap; }
-  h1 { font-size: 26px; letter-spacing: .5px; }
-  h1 .u { color: var(--accent); }
-  .sub { color: var(--ink-2); margin-bottom: 24px; }
+  .mark {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid var(--moon);
+    box-shadow: 0 0 18px var(--moon-faint), inset 0 0 10px var(--moon-faint);
+    flex: none;
+  }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; flex-wrap: wrap; }
+  .word {
+    font-family: var(--display); font-size: 24px; letter-spacing: .14em;
+    text-transform: uppercase;
+  }
   .pill {
-    font-size: 12px; padding: 3px 10px; border-radius: 999px;
-    border: 1px solid var(--line); color: var(--ink-2); background: var(--card);
+    font-size: 12.5px; padding: 4px 12px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--ink-2);
   }
-  .pill.live::before { content: "●"; color: var(--good); margin-right: 6px; }
-  .pill.stale::before { content: "●"; color: var(--warn); margin-right: 6px; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 28px; }
-  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
-  .tile .k { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-3); margin-bottom: 6px; }
-  .tile .v { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .tile .d { font-size: 12px; color: var(--ink-2); margin-top: 4px; }
-  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-3); margin: 26px 0 10px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
+  .pill.live { border-color: var(--moon-dim); color: var(--moon); }
+  .sub { color: var(--ink-2); margin-bottom: 34px; max-width: 60ch; }
+
+  h2 {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .18em; color: var(--ink-3); margin: 34px 0 14px;
+  }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; }
+  .tile { background: var(--well); padding: 16px 18px; }
+  .tile .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--ink-3); margin-bottom: 6px; }
+  .tile .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .d { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
+
+  .card { border: 1px solid var(--line-soft); border-radius: 12px; padding: 18px; margin-bottom: 12px; background: var(--well); }
   .card .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
   .card .name { font-weight: 600; }
-  .card .id { font-family: ui-monospace, monospace; font-size: 12px; color: var(--ink-3); word-break: break-all; }
-  .stats { display: flex; gap: 26px; margin-top: 10px; flex-wrap: wrap; }
-  .stats .s .k { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .6px; }
+  .card .id { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); word-break: break-all; margin-top: 2px; }
+  .stats { display: flex; gap: 30px; margin-top: 12px; flex-wrap: wrap; }
+  .stats .s .k { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .1em; }
   .stats .s .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .ok { color: var(--good); font-size: 13px; }
-  .warn { color: var(--warn); font-size: 13px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  td, th { text-align: left; padding: 7px 10px; border-top: 1px solid var(--line); }
-  th { color: var(--ink-3); font-weight: 500; border-top: none; }
-  td.mono { font-family: ui-monospace, monospace; font-size: 12px; }
-  footer { margin-top: 30px; color: var(--ink-3); font-size: 13px; }
-  a { color: var(--accent); text-decoration: none; }
+  .ok { color: var(--moon); font-size: 13px; }
+  .warn { color: var(--err); font-size: 13px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  td, th { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line-soft); }
+  tr:last-child td { border-bottom: none; }
+  th { color: var(--ink-3); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; }
+  td.mono { font-family: var(--mono); font-size: 11.5px; }
+
+  input, button.act {
+    padding: 10px 12px; background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px; font: 13.5px var(--body);
+  }
+  input:focus { outline: none; border-color: var(--moon-dim); box-shadow: 0 0 0 3px var(--moon-faint); }
+  button.act {
+    cursor: pointer; border-color: var(--moon); color: var(--moon); font-weight: 600;
+    border-radius: 999px; padding: 10px 20px; background: transparent;
+    transition: background .15s;
+  }
+  button.act:hover { background: var(--moon-faint); }
+
+  footer { margin-top: 44px; padding-top: 20px; border-top: 1px solid var(--line-soft); color: var(--ink-3); font-size: 13px; line-height: 1.8; }
+  a { color: var(--moon-dim); text-decoration: none; }
+  a:hover { color: var(--moon); }
 </style>
 </head>
 <body>
 <header>
-  <h1><span class="u">◐</span> Umbra</h1>
+  <div class="mark" aria-hidden="true"></div>
+  <div class="word">Umbra</div>
   <span class="pill" id="net">…</span>
   <span class="pill" id="live">connecting…</span>
+  <span style="margin-left:auto"><a href="/view">read your confidential statement →</a></span>
 </header>
-<div class="sub">A durable, verifiable event index for privacy protocols on Stellar.</div>
+<div class="sub">A durable, verifiable event index for privacy protocols on Stellar.
+RPCs forget after ~7 days; Umbra replays the public history archives and remembers — provably.</div>
 
 <div class="tiles">
   <div class="tile"><div class="k">Last ledger</div><div class="v" id="ledger">—</div><div class="d" id="ledger-t">—</div></div>
   <div class="tile"><div class="k">Sync lag</div><div class="v" id="lag">—</div><div class="d">vs wall clock</div></div>
   <div class="tile"><div class="k">Coverage gaps</div><div class="v" id="gaps">—</div><div class="d" id="gaps-d">—</div></div>
-  <div class="tile"><div class="k">RPC endpoint</div><div class="v" style="font-size:15px" id="rpc">—</div><div class="d">active source</div></div>
+  <div class="tile"><div class="k">RPC endpoint</div><div class="v" style="font-size:14px" id="rpc">—</div><div class="d">active source</div></div>
 </div>
 
 <h2>Privacy pools (SPP)</h2>
 <div id="pools"></div>
 
 <h2>Indexed contracts</h2>
-<div class="card" style="padding:6px 8px">
+<div class="card" style="padding:6px 14px">
   <table id="contracts"><tr><th>Label</th><th>Kind</th><th>Contract</th><th>Since ledger</th><th>Source</th></tr></table>
 </div>
 
 <h2>Index your contract</h2>
 <div class="card">
-  <div style="color:var(--ink-2);font-size:13px;margin-bottom:10px">
+  <div style="color:var(--ink-2);font-size:13.5px;margin-bottom:12px;max-width:64ch">
     Paste a testnet contract id — Umbra classifies it from its on-chain spec,
-    indexes it live from now on, and recovers history: recent ranges from the
-    RPC, anything older by replaying the public history archives. Default
-    depth is 30 days; set the date to reach further back (deep ranges take
-    hours, once — newest history lands first). No signup, no restart.
+    indexes it live from now on, and recovers history: recent ranges from the RPC,
+    anything older by replaying the public history archives (newest first).
+    No signup, no restart.
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <input id="reg-id" placeholder="C…" maxlength="56"
-           style="flex:2 1 340px;padding:7px 10px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,monospace;font-size:12px">
-    <input id="reg-since" type="date" title="history since (optional, default 30 days)"
-           style="flex:0 1 150px;padding:7px 10px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:13px">
-    <input id="reg-label" placeholder="label (optional)" maxlength="120"
-           style="flex:1 1 140px;padding:7px 10px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:13px">
-    <button onclick="registerContract()"
-            style="padding:7px 16px;background:var(--card);color:var(--accent);border:1px solid var(--accent);border-radius:6px;cursor:pointer;font-size:13px">Index it</button>
+           style="flex:2 1 320px;font-family:var(--mono);font-size:12px">
+    <input id="reg-since" type="date" title="history since (optional, default 30 days)" style="flex:0 1 160px">
+    <input id="reg-label" placeholder="label (optional)" maxlength="120" style="flex:1 1 130px">
+    <button class="act" onclick="registerContract()">Index it</button>
   </div>
-  <div id="reg-out" style="color:var(--ink-2);font-size:13px;margin-top:8px"></div>
+  <div id="reg-out" style="color:var(--ink-2);font-size:13px;margin-top:10px"></div>
 </div>
 
 <footer>
-  <a href="/view">🔒 read your confidential statement</a> ·
+  <a href="/view">🌑 read your confidential statement</a> ·
   API: <a href="/v1/status">/v1/status</a> · <a href="/v1/pools">/v1/pools</a> ·
   bootnode JSON-RPC at <span class="mono">POST /</span> ·
   <a href="https://github.com/zkCaleb-dev/umbra">source</a>
@@ -103,13 +145,14 @@
 
 <script>
 const $ = id => document.getElementById(id);
+const API = new URLSearchParams(location.search).get('api') || '';
 const fmt = n => Number(n).toLocaleString('en-US');
 
 async function refresh() {
   try {
     const [st, pools] = await Promise.all([
-      fetch('/v1/status').then(r => r.json()),
-      fetch('/v1/pools').then(r => r.json()),
+      fetch(API + '/v1/status').then(r => r.json()),
+      fetch(API + '/v1/pools').then(r => r.json()),
     ]);
     $('net').textContent = st.network;
     const ing = st.ingestion;
@@ -121,18 +164,18 @@ async function refresh() {
       $('rpc').textContent = ing.rpc_endpoint;
       const live = lag < 30;
       $('live').textContent = live ? 'following tip' : 'catching up';
-      $('live').className = 'pill ' + (live ? 'live' : 'stale');
+      $('live').className = 'pill' + (live ? ' live' : '');
     }
     $('gaps').textContent = (st.gaps || []).length;
     $('gaps-d').textContent = (st.gaps || []).length === 0
-      ? 'complete since deployment' : 'declared ranges (honest gaps)';
+      ? 'complete — beyond any RPC' : 'declared ranges (honest gaps)';
 
     $('pools').innerHTML = (pools || []).map(p => {
       const s = p.stats || {};
       const complete = s.leaf_count === 0 || s.leaf_count === (s.max_leaf_index ?? -1) + 1;
       return `<div class="card">
         <div class="row"><span class="name">${p.label || 'pool'}</span>
-          <span><span class="${complete ? 'ok' : 'warn'}">${complete ? '✓ leaf sequence complete' : '⚠ leaf sequence has holes'}</span>
+          <span><span class="${complete ? 'ok' : 'warn'}">${complete ? '◌ leaf sequence complete' : '⚠ leaf sequence has holes'}</span>
           · <span id="cp-${p.id}" class="warn">verifying root…</span></span></div>
         <div class="id">${p.id}</div>
         <div class="stats">
@@ -141,26 +184,26 @@ async function refresh() {
           <div class="s"><div class="k">Max leaf index</div><div class="v">${s.max_leaf_index ?? '—'}</div></div>
         </div>
       </div>`;
-    }).join('') || '<div class="card">no pools configured</div>';
+    }).join('') || '<div class="card" style="color:var(--ink-3)">no pools configured</div>';
 
     // Cryptographic checkpoint per pool: recomputed Poseidon2 root vs the
     // contract's on-chain root (fetched lazily; slower than the stats).
     (pools || []).forEach(async p => {
       const el = document.getElementById('cp-' + p.id);
       try {
-        const cp = await fetch(`/v1/pools/${p.id}/checkpoint`).then(r => r.json());
+        const cp = await fetch(`${API}/v1/pools/${p.id}/checkpoint`).then(r => r.json());
         el.className = cp.verified ? 'ok' : 'warn';
         el.title = `computed ${cp.computed_root || '—'} vs on-chain ${cp.onchain_root}`;
-        el.textContent = cp.verified ? '✓ root verified on-chain' : '⚠ ' + cp.detail;
+        el.textContent = cp.verified ? '◌ root verified on-chain' : '⚠ ' + cp.detail;
       } catch { el.textContent = 'checkpoint unavailable'; }
     });
 
     const rows = (st.contracts || []).map(c =>
-      `<tr><td>${c.label || ''}</td><td>${c.kind}</td><td class="mono">${c.id}</td><td>${fmt(c.start_ledger)}</td><td>${c.source || 'config'}</td></tr>`).join('');
+      `<tr><td>${c.label || ''}</td><td>${c.kind}</td><td class="mono">${c.id}</td><td>${fmt(c.start_ledger)}</td><td class="muted">${c.source || 'config'}</td></tr>`).join('');
     $('contracts').innerHTML = '<tr><th>Label</th><th>Kind</th><th>Contract</th><th>Since ledger</th><th>Source</th></tr>' + rows;
   } catch (e) {
     $('live').textContent = 'unreachable';
-    $('live').className = 'pill stale';
+    $('live').className = 'pill';
   }
 }
 refresh();
@@ -173,7 +216,7 @@ async function registerContract() {
   try {
     const body = {id, label: $('reg-label').value.trim()};
     if ($('reg-since').value) body.since = $('reg-since').value;
-    const resp = await fetch('/v1/contracts', {
+    const resp = await fetch(API + '/v1/contracts', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
@@ -181,7 +224,7 @@ async function registerContract() {
     const text = await resp.text();
     if (!resp.ok) { out.textContent = '✗ ' + text.trim(); return; }
     const r = JSON.parse(text);
-    out.textContent = `✓ ${r.id} indexed as ${r.kind} (${r.classification}) — backfill: ${r.backfill}`;
+    out.textContent = `◌ ${r.id} indexed as ${r.kind} (${r.classification}) — backfill: ${r.backfill}`;
     refresh();
   } catch (e) { out.textContent = '✗ ' + e; }
 }

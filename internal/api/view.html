@@ -3,95 +3,228 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Umbra — confidential statement</title>
+<title>Umbra — your confidential statement</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --surface: #0e1116; --card: #161b22; --line: #21262d;
-    --ink: #e6edf3; --ink-2: #9aa4af; --ink-3: #6e7681;
-    --accent: #a78bfa; --good: #3fb950; --warn: #d29922; --bad: #f85149;
+    --surface: oklch(13% 0.008 88);
+    --well: oklch(15.5% 0.01 88);
+    --line: oklch(25% 0.015 88);
+    --line-soft: oklch(20% 0.012 88);
+    --ink: oklch(93% 0.015 92);
+    --ink-2: oklch(66% 0.025 90);
+    --ink-3: oklch(47% 0.02 90);
+    --moon: oklch(82% 0.12 92);
+    --moon-dim: oklch(68% 0.08 90);
+    --moon-faint: oklch(82% 0.12 92 / 0.14);
+    --err: oklch(62% 0.18 25);
+    --display: 'Marcellus', serif;
+    --body: 'Hanken Grotesk', ui-sans-serif, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, monospace;
   }
   * { box-sizing: border-box; margin: 0; }
+  html { color-scheme: dark; }
   body {
     background: var(--surface); color: var(--ink);
-    font: 15px/1.5 ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
-    padding: 32px 20px; max-width: 980px; margin: 0 auto;
+    font: 15.5px/1.65 var(--body);
+    max-width: 880px; margin: 0 auto; padding: 48px 24px 64px;
   }
-  header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; flex-wrap: wrap; }
-  h1 { font-size: 26px; letter-spacing: .5px; }
-  h1 .u { color: var(--accent); }
-  h1 a { color: inherit; text-decoration: none; }
-  .sub { color: var(--ink-2); margin-bottom: 24px; max-width: 640px; }
-  .pill {
-    font-size: 12px; padding: 3px 10px; border-radius: 999px;
-    border: 1px solid var(--line); color: var(--ink-2); background: var(--card);
+
+  /* ===== the mark: an annular eclipse ===== */
+  .mark {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid var(--moon);
+    box-shadow: 0 0 18px var(--moon-faint), inset 0 0 10px var(--moon-faint);
+    flex: none;
   }
-  .pill.lock::before { content: "🔒"; margin-right: 6px; font-size: 11px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-3); margin: 22px 0 10px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 14px; }
-  label { display: block; font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
-  select, input[type=password], input[type=text] {
-    width: 100%; padding: 9px 12px; background: var(--surface); color: var(--ink);
-    border: 1px solid var(--line); border-radius: 8px; font-size: 14px;
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
+  .word {
+    font-family: var(--display); font-size: 24px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink);
   }
-  input.mono, select.mono { font-family: ui-monospace, monospace; font-size: 12.5px; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .word a { color: inherit; text-decoration: none; }
+  .word span { color: var(--ink-3); letter-spacing: .06em; text-transform: none; font-size: 20px; }
+  header .tag {
+    margin-left: auto; font-size: 12.5px; color: var(--ink-2);
+    display: flex; align-items: center; gap: 8px; text-align: right;
+  }
+  .ringdot {
+    width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--moon);
+    box-shadow: 0 0 8px var(--moon-faint); flex: none;
+  }
+  .ringdot.off { border-color: var(--ink-3); box-shadow: none; }
+
+  h1 {
+    font-family: var(--display); font-weight: 400;
+    font-size: clamp(28px, 5vw, 40px); line-height: 1.2;
+    letter-spacing: .01em; margin-bottom: 14px; max-width: 20ch;
+  }
+  .lede { color: var(--ink-2); max-width: 56ch; margin-bottom: 56px; }
+  .lede em { color: var(--moon-dim); font-style: normal; }
+
+  /* ===== form flow ===== */
+  .step { border-top: 1px solid var(--line-soft); padding: 28px 0 36px; }
+  .step-label {
+    font-size: 12px; font-weight: 600; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--ink-3); margin-bottom: 18px;
+  }
+  .step-label b { color: var(--moon-dim); font-weight: 600; margin-right: 10px; }
+  label { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
+  select, input[type=password], input[type=text], input[type=date] {
+    width: 100%; padding: 12px 14px; background: var(--well); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px;
+    font: 14px/1.4 var(--body); transition: border-color .15s, box-shadow .15s;
+  }
+  select:focus, input:focus {
+    outline: none; border-color: var(--moon-dim);
+    box-shadow: 0 0 0 3px var(--moon-faint);
+  }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .hint { font-size: 13px; color: var(--ink-3); margin-top: 10px; max-width: 60ch; }
+
+  .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
   .tab {
-    padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line);
-    background: transparent; color: var(--ink-2); cursor: pointer; font-size: 13px;
+    padding: 7px 18px; border-radius: 999px; border: 1px solid var(--line);
+    background: transparent; color: var(--ink-2); cursor: pointer;
+    font: 500 13.5px var(--body); transition: border-color .15s, color .15s;
   }
-  .tab.active { border-color: var(--accent); color: var(--accent); }
+  .tab:hover { color: var(--ink); }
+  .tab.active { border-color: var(--moon); color: var(--moon); }
+
   .go {
-    width: 100%; padding: 12px; margin-top: 4px; border-radius: 10px; cursor: pointer;
-    background: var(--accent); color: #14101f; border: none; font-size: 15px; font-weight: 600;
+    display: block; width: 100%; padding: 15px; margin-top: 8px;
+    border-radius: 999px; border: none; cursor: pointer;
+    background: var(--moon); color: oklch(17% 0.02 90);
+    font: 600 15.5px var(--body); letter-spacing: .01em;
+    transition: filter .15s, box-shadow .15s;
   }
-  .go:disabled { opacity: .45; cursor: default; }
-  .hint { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; }
-  #status { color: var(--ink-2); font-size: 13.5px; margin: 12px 2px; min-height: 20px; }
-  #status.err { color: var(--bad); }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
-  .tile .k { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-3); margin-bottom: 6px; }
-  .tile .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; word-break: break-all; }
-  .badges { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .badge { font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); }
-  .badge.ok { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
-  .badge.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
-  .badge.na { color: var(--ink-3); }
-  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  td, th { text-align: left; padding: 8px 10px; border-top: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--ink-3); font-weight: 500; border-top: none; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  td.num.plus { color: var(--good); }
-  td.num.minus { color: var(--ink); }
-  td.muted, .muted { color: var(--ink-3); }
-  .warnbox { border-left: 3px solid var(--warn); padding: 8px 12px; color: var(--warn); font-size: 13px; margin-top: 10px; }
-  footer { margin-top: 30px; color: var(--ink-3); font-size: 13px; line-height: 1.7; }
-  a { color: var(--accent); text-decoration: none; }
+  .go:hover:not(:disabled) { filter: brightness(1.07); box-shadow: 0 0 28px var(--moon-faint); }
+  .go:disabled { opacity: .4; cursor: default; }
+  #status { color: var(--ink-2); font-size: 13.5px; margin: 14px 2px; min-height: 22px; }
+  #status.err { color: var(--err); }
+
+  /* ===== index-it panel (unknown contract) ===== */
+  #register {
+    display: none; margin-top: 18px; padding: 20px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--well);
+  }
+  #register p { font-size: 14px; color: var(--ink-2); max-width: 58ch; }
+  #register .row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  #register input[type=date] { flex: 0 1 180px; }
+  .ghost {
+    padding: 11px 22px; border-radius: 999px; cursor: pointer;
+    background: transparent; border: 1px solid var(--moon); color: var(--moon);
+    font: 600 13.5px var(--body); transition: background .15s;
+  }
+  .ghost:hover { background: var(--moon-faint); }
+  #reg-progress { display: none; align-items: center; gap: 14px; margin-top: 16px; }
+  .ring-progress {
+    width: 36px; height: 36px; border-radius: 50%; flex: none;
+    background: conic-gradient(var(--moon) calc(var(--p, 0) * 1%), var(--line) 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent 60%, #000 62%);
+    mask: radial-gradient(farthest-side, transparent 60%, #000 62%);
+  }
+  #reg-progress .t { font-size: 13.5px; color: var(--ink-2); }
+
+  /* ===== results ===== */
   #result { display: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    #result.show > * { animation: rise .5s cubic-bezier(.16,1,.3,1) both; }
+    #result.show > *:nth-child(2) { animation-delay: .08s; }
+    #result.show > *:nth-child(3) { animation-delay: .16s; }
+    #result.show > *:nth-child(4) { animation-delay: .24s; }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+  }
+
+  .summary {
+    display: flex; align-items: flex-end; gap: 48px; flex-wrap: wrap;
+    border-top: 1px solid var(--line-soft); padding: 34px 0 8px; margin-top: 24px;
+  }
+  .summary .k { font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+  .summary .main .v {
+    font-size: clamp(34px, 6vw, 44px); font-weight: 600; line-height: 1.1;
+    font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+  }
+  .summary .side { display: flex; gap: 40px; padding-bottom: 6px; }
+  .summary .side .v { font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  .unit { font-size: 12.5px; color: var(--ink-3); margin-left: 6px; font-weight: 400; }
+
+  .verify { display: flex; gap: 26px; flex-wrap: wrap; margin: 26px 0 8px; }
+  .badge { display: inline-flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--ink-2); }
+  .badge .ringdot.ok { border-color: var(--moon); box-shadow: 0 0 10px var(--moon-faint); }
+  .badge .ringdot.bad { border-color: var(--err); box-shadow: 0 0 10px oklch(62% 0.18 25 / .25); }
+  .badge .ringdot.na { border-style: dashed; border-color: var(--ink-3); box-shadow: none; }
+  .badge.bad { color: var(--err); }
+  .verify .at { font-size: 12.5px; color: var(--ink-3); align-self: center; }
+
+  .stmt-head {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    margin: 38px 0 12px;
+  }
+  .stmt-head h2 { font-family: var(--display); font-weight: 400; font-size: 21px; letter-spacing: .03em; }
+  .stmt-head .who { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); word-break: break-all; }
+  .tablewrap { overflow-x: auto; border-top: 1px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { text-align: left; padding: 11px 14px 11px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .14em; color: var(--ink-3); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 20px; }
+  th.num { text-align: right; padding-right: 20px; }
+  td.num.plus { color: var(--moon); }
+  td.muted, .muted { color: var(--ink-3); }
+  td.note { color: var(--ink-2); font-size: 13.5px; }
+  .warnbox { color: var(--err); font-size: 13.5px; margin-top: 14px; }
+
+  footer {
+    margin-top: 72px; padding-top: 24px; border-top: 1px solid var(--line-soft);
+    color: var(--ink-3); font-size: 13px; line-height: 1.8; max-width: 66ch;
+  }
+  a { color: var(--moon-dim); text-decoration: none; }
+  a:hover { color: var(--moon); }
 </style>
 </head>
 <body>
 <header>
-  <h1><a href="/"><span class="u">◐</span> Umbra</a> · view</h1>
-  <span class="pill lock">keys never leave your browser</span>
-  <span class="pill" id="wasm-pill">loading crypto…</span>
+  <div class="mark" aria-hidden="true"></div>
+  <div class="word"><a href="/">Umbra</a> <span>· view</span></div>
+  <div class="tag"><span class="ringdot off" id="wasm-dot"></span><span id="wasm-tag">waking the crypto…</span></div>
 </header>
-<div class="sub">
-  Read your confidential-token statement. Umbra serves only ciphertexts —
-  the decryption below runs entirely in this page, and the result is
-  verified against the chain's own commitments.
-</div>
 
-<h2>1 · Token</h2>
-<div class="card">
+<h1>Your money is private.<br>Not invisible to you.</h1>
+<p class="lede">
+  Umbra stores only ciphertexts. This page derives your viewing key
+  <em>inside your browser</em>, decrypts what your key can read, and proves
+  the result against the chain's own commitments. Nothing secret ever
+  leaves this tab.
+</p>
+
+<section class="step">
+  <div class="step-label"><b>I</b>Token</div>
   <label for="token">Confidential token contract</label>
   <select id="token" class="mono"></select>
   <input id="token-custom" class="mono" type="text" placeholder="C…" maxlength="56"
-         style="display:none;margin-top:8px">
-</div>
+         style="display:none;margin-top:10px" oninput="onCustomToken()">
+  <div id="register">
+    <p id="reg-copy">Umbra doesn't watch this contract yet. Index it now — it will be
+    classified from its on-chain spec, live events start immediately, and
+    history is recovered from the RPC and the public archives, newest first.</p>
+    <div class="row">
+      <div>
+        <label for="reg-since" style="margin-bottom:4px">history since <span class="muted">(optional, default 30 days)</span></label>
+        <input id="reg-since" type="date">
+      </div>
+      <button class="ghost" style="margin-top:18px" onclick="registerToken()">Index this contract</button>
+    </div>
+    <div id="reg-progress">
+      <div class="ring-progress" id="reg-ring"></div>
+      <div class="t" id="reg-text">registering…</div>
+    </div>
+  </div>
+</section>
 
-<h2>2 · Your key</h2>
-<div class="card">
+<section class="step">
+  <div class="step-label"><b>II</b>Your key</div>
   <div class="tabs">
     <button class="tab active" id="tab-seed" onclick="pickTab('seed')">Secret key</button>
     <button class="tab" id="tab-freighter" onclick="pickTab('freighter')" style="display:none">Freighter</button>
@@ -99,44 +232,50 @@
   <div id="pane-seed">
     <label for="seed">Secret key (S…)</label>
     <input id="seed" type="password" class="mono" placeholder="S…" maxlength="56" autocomplete="off">
-    <div class="hint">Processed inside this page's WebAssembly module and never transmitted —
-      the network tab will show only ciphertext downloads.</div>
+    <div class="hint">Read only by the WebAssembly module below — open the network tab:
+      every request is a ciphertext download or a public on-chain read.</div>
   </div>
   <div id="pane-freighter" style="display:none">
-    <div class="hint" style="margin:0 0 10px">Freighter signs a fixed derivation message
-      (SEP-0053); your secret key never leaves the wallet at all.</div>
-    <button class="tab" onclick="decrypt()" style="border-color:var(--accent);color:var(--accent)">Sign with Freighter</button>
+    <div class="hint" style="margin:0 0 14px">Freighter signs one fixed derivation message
+      (SEP-0053). Your secret key never leaves the wallet at all.</div>
+    <button class="ghost" onclick="decrypt()">Sign with Freighter</button>
   </div>
-</div>
+</section>
 
 <button class="go" id="go" onclick="decrypt()" disabled>Decrypt my statement</button>
-<div id="status"></div>
+<div id="status" role="status"></div>
 
 <div id="result">
-  <h2>Balances <span class="muted" style="text-transform:none;letter-spacing:0">(base units)</span></h2>
-  <div class="tiles">
-    <div class="tile"><div class="k">Spendable</div><div class="v" id="bal-spend">—</div></div>
-    <div class="tile"><div class="k">Pending</div><div class="v" id="bal-pend">—</div></div>
-    <div class="tile"><div class="k">Total</div><div class="v" id="bal-total">—</div></div>
+  <div class="summary">
+    <div class="main">
+      <div class="k">Spendable</div>
+      <div class="v" id="bal-spend">—</div>
+    </div>
+    <div class="side">
+      <div><div class="k">Pending</div><div class="v" id="bal-pend">—</div></div>
+      <div><div class="k">Total</div><div class="v" id="bal-total">—</div></div>
+    </div>
   </div>
 
-  <h2>On-chain verification</h2>
-  <div class="card badges" id="verify"></div>
+  <div class="verify" id="verify"></div>
 
-  <h2>Statement <span class="muted" id="acct" style="text-transform:none;letter-spacing:0"></span></h2>
-  <div class="card" style="padding:6px 8px;overflow-x:auto">
+  <div class="stmt-head">
+    <h2>Statement</h2>
+    <span class="who" id="acct"></span>
+  </div>
+  <div class="tablewrap">
     <table id="stmt"></table>
   </div>
   <div id="warnings"></div>
 </div>
 
 <footer>
-  How this works: this page downloads your encrypted history from
-  <span class="mono" id="api-label"></span>, derives your viewing key locally
-  (WebAssembly build of Umbra's audited crypto), decrypts what your key can
-  read, and recomputes the Pedersen commitments to compare against the
-  contract's on-chain state — a mathematical proof the numbers are right.
-  · <a href="/">status</a> · <a href="https://github.com/zkCaleb-dev/umbra">source</a>
+  How it works: this page downloads your encrypted history from
+  <span class="mono" id="api-label"></span>, derives your keys locally with a
+  WebAssembly build of Umbra's vector-tested cryptography, and recomputes the
+  Pedersen commitments to compare with the contract's on-chain state — a
+  mathematical proof the numbers are right, or an honest flag when they are not.
+  <br><a href="/">indexer status</a> · <a href="https://github.com/zkCaleb-dev/umbra">source</a>
 </footer>
 
 <script src="/view/wasm_exec.js"></script>
@@ -151,38 +290,45 @@ let wasmReady = false;
   try {
     const go = new Go();
     const res = await WebAssembly.instantiateStreaming(fetch('/view/umbra.wasm'), go.importObject);
-    go.run(res.instance); // resolves never; exports register synchronously
+    go.run(res.instance);
     await new Promise(r => setTimeout(r, 50));
     wasmReady = typeof umbraDeriveFromSeed === 'function';
-    $('wasm-pill').textContent = wasmReady ? 'crypto ready (local)' : 'crypto failed to load';
+    $('wasm-tag').textContent = wasmReady ? 'crypto runs locally' : 'crypto failed to load';
+    $('wasm-dot').className = 'ringdot' + (wasmReady ? '' : ' off');
     $('go').disabled = !wasmReady;
   } catch (e) {
-    $('wasm-pill').textContent = 'crypto failed to load';
+    $('wasm-tag').textContent = 'crypto failed to load';
     setStatus('WebAssembly module unavailable: ' + e, true);
   }
 })();
 
 // ===== token list =====
-(async () => {
-  try {
-    const st = await fetch(API + '/v1/status').then(r => r.json());
-    const cts = (st.contracts || []).filter(c => c.kind === 'confidential-token');
-    const sel = $('token');
-    cts.forEach(c => {
-      const o = document.createElement('option');
-      o.value = c.id;
-      o.textContent = (c.label ? c.label + ' — ' : '') + c.id;
-      sel.appendChild(o);
-    });
-    const custom = document.createElement('option');
-    custom.value = '__custom';
-    custom.textContent = 'other contract…';
-    sel.appendChild(custom);
-    sel.onchange = () => $('token-custom').style.display = sel.value === '__custom' ? 'block' : 'none';
-  } catch { setStatus('could not load token list from the API', true); }
-})();
+async function loadTokens() {
+  const st = await fetch(API + '/v1/status').then(r => r.json());
+  const cts = (st.contracts || []).filter(c => c.kind === 'confidential-token');
+  const sel = $('token');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  cts.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.id;
+    o.textContent = (c.label ? c.label + ' — ' : '') + c.id;
+    sel.appendChild(o);
+  });
+  const custom = document.createElement('option');
+  custom.value = '__custom';
+  custom.textContent = 'another contract…';
+  sel.appendChild(custom);
+  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  sel.onchange = () => {
+    $('token-custom').style.display = sel.value === '__custom' ? 'block' : 'none';
+    $('register').style.display = 'none';
+  };
+  return st;
+}
+loadTokens().catch(() => setStatus('could not reach the Umbra API', true));
 
-// ===== freighter detection (progressive) =====
+// ===== freighter (progressive) =====
 if (window.freighterApi?.signMessage) $('tab-freighter').style.display = '';
 
 let tab = 'seed';
@@ -202,7 +348,66 @@ function setStatus(msg, err) {
 
 function tokenId() {
   const v = $('token').value;
-  return v === '__custom' ? $('token-custom').value.trim() : v;
+  return v === '__custom' ? $('token-custom').value.trim().toUpperCase() : v;
+}
+function onCustomToken() { $('register').style.display = 'none'; }
+
+// ===== self-service indexing (one-page flow) =====
+let regTimer = null;
+async function registerToken() {
+  const token = tokenId();
+  const body = {id: token, label: 'registered via /view'};
+  if ($('reg-since').value) body.since = $('reg-since').value;
+  $('reg-progress').style.display = 'flex';
+  $('reg-text').textContent = 'classifying from its on-chain spec…';
+  try {
+    const resp = await fetch(API + '/v1/contracts', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const text = await resp.text();
+    if (resp.status === 409) { /* already there — just track */ }
+    else if (!resp.ok) throw text.trim();
+    else {
+      const r = JSON.parse(text);
+      if (r.kind !== 'confidential-token')
+        throw `this contract classified as "${r.kind}", not a confidential token`;
+    }
+    trackRecovery(token);
+  } catch (e) {
+    $('reg-progress').style.display = 'none';
+    setStatus(String(e), true);
+  }
+}
+
+// trackRecovery polls coverage and fills the eclipse ring as history
+// walks back toward the requested start.
+function trackRecovery(token) {
+  clearInterval(regTimer);
+  const tick = async () => {
+    try {
+      const st = await loadTokens();
+      const c = (st.contracts || []).find(x => x.id === token);
+      if (!c) return;
+      $('token').value = token;
+      $('token-custom').style.display = 'none';
+      const tip = st.ingestion?.last_ledger || 0;
+      const target = c.start_ledger || 0;
+      const covered = c.covered_from ?? tip;
+      const total = Math.max(1, tip - target);
+      const pct = Math.max(0, Math.min(100, 100 * (tip - covered) / total));
+      $('reg-ring').style.setProperty('--p', pct.toFixed(1));
+      if (covered <= target) {
+        $('reg-text').textContent = 'history fully recovered — decrypt away';
+        clearInterval(regTimer);
+      } else {
+        $('reg-text').textContent =
+          `recovering history, newest first — ${pct.toFixed(0)}% (you can decrypt now; older entries keep appearing)`;
+      }
+    } catch { /* transient — keep polling */ }
+  };
+  tick();
+  regTimer = setInterval(tick, 5000);
 }
 
 // ===== the flow =====
@@ -210,14 +415,14 @@ async function decrypt() {
   if (!wasmReady) return;
   const token = tokenId();
   if (!/^C[A-Z2-7]{55}$/.test(token)) { setStatus('pick a valid token contract (C…)', true); return; }
+  $('result').className = '';
   $('result').style.display = 'none';
   $('go').disabled = true;
   try {
-    // 1 · derive keys, locally
     setStatus('deriving keys locally…');
     let derived;
     if (tab === 'seed') {
-      const seed = $('seed').value.trim();
+      const seed = $('seed').value.trim().toUpperCase();
       if (!/^S[A-Z2-7]{55}$/.test(seed)) throw 'enter a valid secret key (S…)';
       derived = umbraDeriveFromSeed(seed, token);
     } else {
@@ -225,7 +430,7 @@ async function decrypt() {
       const access = await fr.requestAccess();
       const account = access?.address || access;
       if (typeof account !== 'string' || !account.startsWith('G')) throw 'Freighter did not return an account';
-      setStatus('waiting for Freighter signature…');
+      setStatus('waiting for the Freighter signature…');
       const msg = umbraDerivationMessage(token, account);
       const signed = await fr.signMessage(msg, {address: account});
       let sig = signed?.signedMessage ?? signed;
@@ -234,21 +439,25 @@ async function decrypt() {
     }
     if (derived.error) throw derived.error;
     const account = derived.account;
-    $('acct').textContent = '· ' + account;
+    $('acct').textContent = account;
 
-    // 2 · fetch ciphertexts
-    setStatus('downloading encrypted history…');
+    setStatus('downloading your encrypted history…');
     const events = [];
     let since = 0;
     for (;;) {
-      const page = await fetch(`${API}/v1/ct/${token}/history/${account}?since_ledger=${since}&limit=5000`)
-        .then(r => { if (!r.ok) throw 'history: ' + r.statusText; return r.json(); });
+      const resp = await fetch(`${API}/v1/ct/${token}/history/${account}?since_ledger=${since}&limit=5000`);
+      if (resp.status === 404) {
+        // Unknown contract: open the index-it panel instead of erroring.
+        $('register').style.display = 'block';
+        throw 'Umbra doesn’t index this contract yet — index it below, then decrypt again.';
+      }
+      if (!resp.ok) throw 'history: ' + resp.statusText;
+      const page = await resp.json();
       events.push(...(page.events || []));
       if (page.next_ledger == null) break;
       since = page.next_ledger;
     }
 
-    // 3 · public on-chain record for verification
     setStatus('fetching on-chain commitments…');
     let onchain = '';
     let onchainNote = '';
@@ -256,7 +465,6 @@ async function decrypt() {
     if (ocResp.ok) onchain = await ocResp.text();
     else onchainNote = (await ocResp.text()).trim();
 
-    // 4 · decrypt + verify, locally
     setStatus('decrypting locally…');
     const out = umbraStatement(JSON.stringify(events), onchain);
     if (out.error) throw out.error;
@@ -278,37 +486,39 @@ function render(st, eventCount, onchainNote) {
 
   const v = st.verify;
   const badge = (label, verdict) => {
-    if (verdict === 'match') return `<span class="badge ok">✓ ${label}</span>`;
-    if (verdict === 'mismatch') return `<span class="badge bad">✗ ${label} — statement and chain disagree</span>`;
-    return `<span class="badge na">· ${label}: n/a</span>`;
+    if (verdict === 'match') return `<span class="badge"><span class="ringdot ok"></span>${label}</span>`;
+    if (verdict === 'mismatch') return `<span class="badge bad"><span class="ringdot bad"></span>${label} — statement and chain disagree</span>`;
+    if (verdict === 'plain') return `<span class="badge"><span class="ringdot na"></span>${label}</span>`;
+    return `<span class="badge"><span class="ringdot na"></span>${label} — n/a</span>`;
   };
   if (v && v.available) {
     $('verify').innerHTML =
-      badge('viewing key matches registration', v.pvk) +
-      badge('spendable commitment reproduced', v.spend) +
-      badge('pending commitment reproduced', v.receive) +
-      `<span class="muted" style="font-size:12px">vs chain state at ledger ${v.latest_ledger}</span>`;
+      badge('viewing key registered', v.pvk) +
+      badge('spendable proven', v.spend) +
+      badge('pending proven', v.receive) +
+      `<span class="at">against chain state · ledger ${v.latest_ledger}</span>`;
   } else {
-    $('verify').innerHTML = `<span class="badge na">verification unavailable${onchainNote ? ' — ' + onchainNote : ''}</span>`;
+    $('verify').innerHTML = badge('on-chain verification unavailable' + (onchainNote ? ' — ' + onchainNote : ''), 'plain');
   }
 
   const rows = (st.entries || []).map(e => {
     let amount = '<td class="num muted">·</td>';
     if (e.amount != null) {
-      const cls = e.direction === '+' ? 'plus' : e.direction === '-' ? 'minus' : '';
+      const cls = e.direction === '+' ? 'plus' : '';
       amount = `<td class="num ${cls}">${e.direction || ''}${fmt(e.amount)}</td>`;
     }
     return `<tr>
       <td class="muted" style="white-space:nowrap">${e.time || e.ledger}</td>
       <td>${e.kind}</td><td class="muted">${e.role || ''}</td>
-      ${amount}<td class="muted">${e.note || ''}</td></tr>`;
+      ${amount}<td class="note">${e.note || ''}</td></tr>`;
   }).join('');
-  $('stmt').innerHTML = '<tr><th>Time (UTC)</th><th>Kind</th><th>Role</th><th style="text-align:right">Amount</th><th>Note</th></tr>'
-    + (rows || `<tr><td colspan="5" class="muted">no history for this account on this token (${eventCount} events fetched)</td></tr>`);
+  $('stmt').innerHTML = '<tr><th>Time (UTC)</th><th>Kind</th><th>Role</th><th class="num">Amount</th><th>Note</th></tr>'
+    + (rows || `<tr><td colspan="5" class="muted" style="padding:20px 0">No history for this account on this token yet — ${eventCount} events checked. If the contract was just indexed, older entries are still being recovered.</td></tr>`);
 
   $('warnings').innerHTML = (st.warnings || [])
-    .map(w => `<div class="warnbox">${w}</div>`).join('');
+    .map(w => `<div class="warnbox">⚠ ${w}</div>`).join('');
   $('result').style.display = 'block';
+  requestAnimationFrame(() => $('result').className = 'show');
 }
 </script>
 </body>

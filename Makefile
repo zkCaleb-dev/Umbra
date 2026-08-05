@@ -5,7 +5,9 @@
 # then 404s its assets with a pointer here).
 wasm:
 	GOOS=js GOARCH=wasm go build -trimpath -o internal/api/viewassets/umbra.wasm ./cmd/view-wasm
+	rm -f internal/api/viewassets/wasm_exec.js
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" internal/api/viewassets/
+	chmod 644 internal/api/viewassets/wasm_exec.js
 
 build: wasm
 	go build -o bin/umbra ./cmd/umbra
