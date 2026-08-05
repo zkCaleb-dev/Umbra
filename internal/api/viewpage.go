@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zkCaleb-dev/umbra/internal/config"
+	"github.com/zkCaleb-dev/umbra/internal/ct"
 	"github.com/zkCaleb-dev/umbra/internal/view"
 )
 
@@ -87,5 +88,9 @@ func (s *Server) handleCTAccount(w http.ResponseWriter, r *http.Request) {
 		"viewing_public_key":   b64(acct.ViewingKey.Bytes()),
 		"spendable_commitment": b64(acct.Spendable.Bytes()),
 		"receiving_commitment": b64(acct.Receiving.Bytes()),
+		// Display precision of the underlying asset. SAC-backed CTs are
+		// always 7 (Stellar's fixed SAC precision); amounts elsewhere in
+		// the API stay integer base units.
+		"decimals": ct.StellarAssetDecimals,
 	})
 }

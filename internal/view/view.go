@@ -202,26 +202,27 @@ func printStatement(w io.Writer, cfg Config, account string, st *ct.Statement) {
 		}
 		amount := "·"
 		if e.Amount != nil {
+			human := ct.FormatAmount(e.Amount, ct.StellarAssetDecimals)
 			switch {
 			case debits[e.Kind+"/"+e.Role]:
-				amount = "-" + e.Amount.String()
+				amount = "-" + human
 			case credits[e.Kind+"/"+e.Role]:
-				amount = "+" + e.Amount.String()
+				amount = "+" + human
 			default:
-				amount = e.Amount.String()
+				amount = human
 			}
 		}
-		fmt.Fprintf(w, "  %-8d  %-16s  %-16s  %-9s  %16s  %s\n",
+		fmt.Fprintf(w, "  %-8d  %-16s  %-16s  %-9s  %18s  %s\n",
 			e.Ledger, when, e.Kind, e.Role, amount, e.Note)
 	}
 
-	fmt.Fprintf(w, "\nbalances (base units)\n")
+	fmt.Fprintf(w, "\nbalances\n")
 	line := func(name string, v *big.Int) {
 		if v == nil {
 			fmt.Fprintf(w, "  %-10s unknown (no readable checkpoint)\n", name)
 			return
 		}
-		fmt.Fprintf(w, "  %-10s %s\n", name, v.String())
+		fmt.Fprintf(w, "  %-10s %s\n", name, ct.FormatAmount(v, ct.StellarAssetDecimals))
 	}
 	line("spendable", st.Spendable)
 	line("pending", st.Pending)

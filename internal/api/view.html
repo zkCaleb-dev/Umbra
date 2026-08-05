@@ -729,8 +729,10 @@ async function decrypt() {
     let onchain = '';
     let onchainNote = '';
     const ocResp = await fetch(`${API}/v1/ct/${token}/account/${account}`);
-    if (ocResp.ok) onchain = await ocResp.text();
-    else onchainNote = (await ocResp.text()).trim();
+    if (ocResp.ok) {
+      onchain = await ocResp.text();
+      try { const d = JSON.parse(onchain).decimals; if (Number.isInteger(d)) decimals = d; } catch {}
+    } else onchainNote = (await ocResp.text()).trim();
 
     setStatus('decrypting locally…');
     const out = umbraStatement(JSON.stringify(events), onchain);
@@ -745,7 +747,19 @@ async function decrypt() {
   }
 }
 
-const fmt = s => { try { return BigInt(s).toLocaleString('en-US'); } catch { return s; } };
+// Amounts arrive as integer base units; scale by the underlying asset's
+// decimals (from the account endpoint, 7 for SAC-backed tokens) for display.
+let decimals = 7;
+const fmt = s => {
+  try {
+    const v = BigInt(s), neg = v < 0n, abs = neg ? -v : v;
+    const scale = 10n ** BigInt(decimals);
+    const int = (abs / scale).toLocaleString('en-US');
+    if (decimals === 0) return (neg ? '-' : '') + int;
+    const frac = (abs % scale).toString().padStart(decimals, '0');
+    return (neg ? '-' : '') + int + '.' + frac;
+  } catch { return s; }
+};
 
 function render(st, eventCount, onchainNote) {
   $('bal-spend').textContent = st.spendable != null ? fmt(st.spendable) : 'unknown';

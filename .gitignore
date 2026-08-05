@@ -6,3 +6,4 @@
 coverage.out
 internal/api/viewassets/umbra.wasm
 internal/api/viewassets/wasm_exec.js
+.ct-demo/
