@@ -210,6 +210,18 @@ func (p *Point) Equal(q *Point) bool {
 // AddPoints exposes group addition for accumulator reconciliation.
 func AddPoints(p, q *Point) *Point { return add(p, q) }
 
+// Bytes encodes the point as be(x)‖be(y), the identity as 64 zero bytes
+// (SDK.md §4.2).
+func (p *Point) Bytes() []byte {
+	out := make([]byte, 64)
+	if p.Inf {
+		return out
+	}
+	p.X.FillBytes(out[:32])
+	p.Y.FillBytes(out[32:])
+	return out
+}
+
 // PointFromBytes decodes a 64-byte be(x)‖be(y) point; 64 zero bytes is
 // the identity (SDK.md §4.2).
 func PointFromBytes(b []byte) (*Point, error) {

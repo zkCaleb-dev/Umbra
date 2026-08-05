@@ -245,7 +245,7 @@ func verifyOnChain(ctx context.Context, cfg Config, keys *ct.Keys, st *ct.Statem
 	w := cfg.Out
 	fmt.Fprintf(w, "\non-chain verification (%s)\n", cfg.RPCURL)
 
-	acct, latest, err := fetchConfidentialAccount(ctx, cfg.RPCURL, cfg.Token, keys.Account)
+	acct, latest, err := FetchConfidentialAccount(ctx, cfg.RPCURL, cfg.Token, keys.Account)
 	if err != nil {
 		fmt.Fprintf(w, "  unavailable: %v\n", err)
 		return
@@ -259,11 +259,11 @@ func verifyOnChain(ctx context.Context, cfg Config, keys *ct.Keys, st *ct.Statem
 		}
 		fmt.Fprintf(w, "  %-34s %s\n", name, verdict)
 	}
-	check("derived PVK vs registered key", keys.PVK.Equal(acct.viewingKey))
+	check("derived PVK vs registered key", keys.PVK.Equal(acct.ViewingKey))
 	if st.Spendable != nil {
-		check("Commit(spendable) vs C_spend", ct.Commit(st.Spendable, st.SpendR).Equal(acct.spendable))
+		check("Commit(spendable) vs C_spend", ct.Commit(st.Spendable, st.SpendR).Equal(acct.Spendable))
 	}
 	if st.Pending != nil {
-		check("Commit(pending) vs C_receive", ct.Commit(st.Pending, st.ReceiveR).Equal(acct.receiving))
+		check("Commit(pending) vs C_receive", ct.Commit(st.Pending, st.ReceiveR).Equal(acct.Receiving))
 	}
 }

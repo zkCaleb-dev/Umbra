@@ -67,6 +67,8 @@ ledger.
 | `GET /v1/contracts/{id}/events?cursor=&limit=` | Raw event stream of ANY configured contract (readable render + XDR) |
 | `GET /v1/tokens/{id}/transfers?address=&since_ledger=` | Decoded SEP-41/SAC transfers, filterable per address |
 | `GET /v1/ct/{token}/history/{address}?since_ledger=&limit=` | Confidential-token events naming an address — ciphertext payloads served verbatim, decryption is the client's job |
+| `GET /v1/ct/{token}/account/{address}` | The PUBLIC on-chain ConfidentialAccount record (registered viewing key + balance commitments), proxied for client-side verification |
+| `GET /view` | In-browser statement reader: the same crypto as `umbra view` compiled to WASM — keys never leave the page, results verified against on-chain commitments |
 | `POST /v1/contracts` | Register a contract at runtime: `{"id": "C…", "since"?: "2026-07-01", "kind"?: …, "label"?: …}`. Kind omitted → auto-classified from the on-chain spec. History recovers immediately: recent ranges from the RPC, older ones replayed from the public history archives ([how and why](docs/ARCHIVE-BACKFILL.md)) — default depth 30 days |
 | `GET /v1/status` | Cursor, RPC endpoint, gap evidence, contracts |
 | `GET /healthz`, `GET /readyz` | Liveness / readiness |

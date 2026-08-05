@@ -20,7 +20,7 @@ func TestFetchConfidentialAccountLive(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	acct, latest, err := fetchConfidentialAccount(ctx,
+	acct, latest, err := FetchConfidentialAccount(ctx,
 		"https://soroban-testnet.stellar.org",
 		"CANJZVFDJ2ARRHHCPTBIZ2O3N45KWCZJY2Q4ZUPWZW6T7TKNDBNZOQ4D",
 		"GCRYH6M5YLTGZTCAALJPIJGQZY4Z6XFFUVTINCELQG4OGLADUBTAE3OU")
@@ -32,9 +32,9 @@ func TestFetchConfidentialAccountLive(t *testing.T) {
 	}
 	// PointFromBytes already enforced on-curve; just confirm the record
 	// is complete and non-identity where it must be.
-	if acct.viewingKey.Inf {
+	if acct.ViewingKey.Inf {
 		t.Fatal("registered viewing key is the identity")
 	}
-	t.Logf("latest ledger %d; PVK=(%x, %x)", latest, acct.viewingKey.X, acct.viewingKey.Y)
-	t.Logf("C_spend identity=%v, C_receive identity=%v", acct.spendable.Inf, acct.receiving.Inf)
+	t.Logf("latest ledger %d; PVK=(%x, %x)", latest, acct.ViewingKey.X, acct.ViewingKey.Y)
+	t.Logf("C_spend identity=%v, C_receive identity=%v", acct.Spendable.Inf, acct.Receiving.Inf)
 }

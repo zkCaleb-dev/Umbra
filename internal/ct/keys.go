@@ -63,6 +63,27 @@ func DeriveKeys(secretSeed, contract string) (*Keys, error) {
 	}
 	account := kp.Address()
 
+	// root = Ed25519-Sign(SHA256(prefix ‖ msg))
+	digest := sha256.Sum256(append([]byte(sep53Prefix), DerivationMessage(contract, account)...))
+	root, err := kp.Sign(digest[:])
+	if err != nil {
+		return nil, fmt.Errorf("signing derivation message: %w", err)
+	}
+	return DeriveKeysFromRoot(root, contract, account)
+}
+
+// DerivationMessage is the SEP-0053 message a wallet signs to enroll:
+// context ‖ \n ‖ contract ‖ \n ‖ account (151 bytes). Exposed so the
+// browser flow can hand it to Freighter's signMessage — whose signature
+// IS the derivation root, keeping the raw seed out of the picture.
+func DerivationMessage(contract, account string) string {
+	return derivationContext + "\n" + contract + "\n" + account
+}
+
+// DeriveKeysFromRoot derives the hierarchy from an already-produced
+// SEP-0053 signature (or raw root). This is the wallet path: the signer
+// holds the seed, we only ever see the 64-byte signature.
+func DeriveKeysFromRoot(root []byte, contract, account string) (*Keys, error) {
 	addrF, err := AddressToField(contract)
 	if err != nil {
 		return nil, fmt.Errorf("contract address: %w", err)
@@ -71,15 +92,6 @@ func DeriveKeys(secretSeed, contract string) (*Keys, error) {
 	if err != nil {
 		return nil, fmt.Errorf("account address: %w", err)
 	}
-
-	// root = Ed25519-Sign(SHA256(prefix ‖ context ‖ \n ‖ contract ‖ \n ‖ account))
-	msg := derivationContext + "\n" + contract + "\n" + account
-	digest := sha256.Sum256(append([]byte(sep53Prefix), msg...))
-	root, err := kp.Sign(digest[:])
-	if err != nil {
-		return nil, fmt.Errorf("signing derivation message: %w", err)
-	}
-
 	sk, vk, err := rejectionSample(root, addrF, acctF)
 	if err != nil {
 		return nil, err

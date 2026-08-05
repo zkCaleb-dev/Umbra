@@ -4,7 +4,11 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -o /out/umbra ./cmd/umbra
+# The /view page's WASM crypto module must exist before the server build
+# embeds internal/api/viewassets.
+RUN GOOS=js GOARCH=wasm go build -trimpath -o internal/api/viewassets/umbra.wasm ./cmd/view-wasm && \
+    cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" internal/api/viewassets/ && \
+    CGO_ENABLED=0 go build -trimpath -o /out/umbra ./cmd/umbra
 
 # Run — SDF's official stellar-core image (ubuntu + core + curl), not
 # distroless: the archive-backfill leg spawns captive stellar-core to

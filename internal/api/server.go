@@ -83,7 +83,11 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /v1/tokens/{id}/transfers", s.handleTransfers)
 	mux.HandleFunc("GET /v1/pools/{id}/checkpoint", s.handleCheckpoint)
 	mux.HandleFunc("GET /v1/ct/{token}/history/{address}", s.handleCTHistory)
+	mux.HandleFunc("GET /v1/ct/{token}/account/{address}", s.handleCTAccount)
 	mux.HandleFunc("POST /v1/contracts", s.handleRegisterContract)
+	// The in-browser statement reader (WASM build of internal/ct).
+	mux.HandleFunc("GET /view", s.handleViewPage)
+	mux.HandleFunc("GET /view/{asset}", s.handleViewAsset)
 	// Bootnode-compatible JSON-RPC surface (see jsonrpc.go).
 	mux.HandleFunc("POST /{$}", s.handleJSONRPC)
 	// Human-facing status page.

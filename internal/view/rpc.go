@@ -15,18 +15,20 @@ import (
 	"github.com/zkCaleb-dev/umbra/internal/ct"
 )
 
-// confidentialAccount is the on-chain ConfidentialAccount record
-// (storage.rs) reduced to what verification needs.
-type confidentialAccount struct {
-	viewingKey *ct.Point // PVK = vk·H
-	spendable  *ct.Point // C_spend
-	receiving  *ct.Point // C_receive
+// OnChainAccount is the on-chain ConfidentialAccount record
+// (storage.rs) reduced to what verification needs. Public data: anyone
+// can read it straight from the chain; the API also proxies it so the
+// browser page verifies without talking to an RPC itself.
+type OnChainAccount struct {
+	ViewingKey *ct.Point // PVK = vk·H
+	Spendable  *ct.Point // C_spend
+	Receiving  *ct.Point // C_receive
 }
 
-// fetchConfidentialAccount reads the persistent
+// FetchConfidentialAccount reads the persistent
 // ConfidentialTokenStorageKey::Account(account) entry of the token
 // contract via getLedgerEntries.
-func fetchConfidentialAccount(ctx context.Context, rpcURL, token, account string) (*confidentialAccount, uint32, error) {
+func FetchConfidentialAccount(ctx context.Context, rpcURL, token, account string) (*OnChainAccount, uint32, error) {
 	raw, err := strkey.Decode(strkey.VersionByteContract, token)
 	if err != nil {
 		return nil, 0, fmt.Errorf("decoding token id: %w", err)
@@ -120,12 +122,12 @@ func fetchConfidentialAccount(ctx context.Context, rpcURL, token, account string
 }
 
 // parseConfidentialAccount walks the contracttype struct's ScMap.
-func parseConfidentialAccount(val xdr.ScVal) (*confidentialAccount, error) {
+func parseConfidentialAccount(val xdr.ScVal) (*OnChainAccount, error) {
 	m, ok := val.GetMap()
 	if !ok || m == nil {
 		return nil, fmt.Errorf("ConfidentialAccount is not a map")
 	}
-	acct := &confidentialAccount{}
+	acct := &OnChainAccount{}
 	for _, kv := range *m {
 		name, ok := kv.Key.GetSym()
 		if !ok {
@@ -136,11 +138,11 @@ func parseConfidentialAccount(val xdr.ScVal) (*confidentialAccount, error) {
 		var dst **ct.Point
 		switch string(name) {
 		case "viewing_public_key":
-			dst = &acct.viewingKey
+			dst = &acct.ViewingKey
 		case "spendable_commitment", "spendable_balance":
-			dst = &acct.spendable
+			dst = &acct.Spendable
 		case "receiving_commitment", "receiving_balance":
-			dst = &acct.receiving
+			dst = &acct.Receiving
 		default:
 			continue
 		}
@@ -154,7 +156,7 @@ func parseConfidentialAccount(val xdr.ScVal) (*confidentialAccount, error) {
 		}
 		*dst = p
 	}
-	if acct.viewingKey == nil || acct.spendable == nil || acct.receiving == nil {
+	if acct.ViewingKey == nil || acct.Spendable == nil || acct.Receiving == nil {
 		found := make([]string, 0, len(*m))
 		for _, kv := range *m {
 			if name, ok := kv.Key.GetSym(); ok {

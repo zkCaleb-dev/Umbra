@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Umbra — confidential statement</title>
+<style>
+  :root {
+    --surface: #0e1116; --card: #161b22; --line: #21262d;
+    --ink: #e6edf3; --ink-2: #9aa4af; --ink-3: #6e7681;
+    --accent: #a78bfa; --good: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--surface); color: var(--ink);
+    font: 15px/1.5 ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+    padding: 32px 20px; max-width: 980px; margin: 0 auto;
+  }
+  header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; flex-wrap: wrap; }
+  h1 { font-size: 26px; letter-spacing: .5px; }
+  h1 .u { color: var(--accent); }
+  h1 a { color: inherit; text-decoration: none; }
+  .sub { color: var(--ink-2); margin-bottom: 24px; max-width: 640px; }
+  .pill {
+    font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--ink-2); background: var(--card);
+  }
+  .pill.lock::before { content: "🔒"; margin-right: 6px; font-size: 11px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-3); margin: 22px 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+  select, input[type=password], input[type=text] {
+    width: 100%; padding: 9px 12px; background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 8px; font-size: 14px;
+  }
+  input.mono, select.mono { font-family: ui-monospace, monospace; font-size: 12.5px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tab {
+    padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line);
+    background: transparent; color: var(--ink-2); cursor: pointer; font-size: 13px;
+  }
+  .tab.active { border-color: var(--accent); color: var(--accent); }
+  .go {
+    width: 100%; padding: 12px; margin-top: 4px; border-radius: 10px; cursor: pointer;
+    background: var(--accent); color: #14101f; border: none; font-size: 15px; font-weight: 600;
+  }
+  .go:disabled { opacity: .45; cursor: default; }
+  .hint { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; }
+  #status { color: var(--ink-2); font-size: 13.5px; margin: 12px 2px; min-height: 20px; }
+  #status.err { color: var(--bad); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+  .tile .k { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-3); margin-bottom: 6px; }
+  .tile .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .badges { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .badge { font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); }
+  .badge.ok { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
+  .badge.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+  .badge.na { color: var(--ink-3); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  td, th { text-align: left; padding: 8px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink-3); font-weight: 500; border-top: none; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.num.plus { color: var(--good); }
+  td.num.minus { color: var(--ink); }
+  td.muted, .muted { color: var(--ink-3); }
+  .warnbox { border-left: 3px solid var(--warn); padding: 8px 12px; color: var(--warn); font-size: 13px; margin-top: 10px; }
+  footer { margin-top: 30px; color: var(--ink-3); font-size: 13px; line-height: 1.7; }
+  a { color: var(--accent); text-decoration: none; }
+  #result { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/"><span class="u">◐</span> Umbra</a> · view</h1>
+  <span class="pill lock">keys never leave your browser</span>
+  <span class="pill" id="wasm-pill">loading crypto…</span>
+</header>
+<div class="sub">
+  Read your confidential-token statement. Umbra serves only ciphertexts —
+  the decryption below runs entirely in this page, and the result is
+  verified against the chain's own commitments.
+</div>
+
+<h2>1 · Token</h2>
+<div class="card">
+  <label for="token">Confidential token contract</label>
+  <select id="token" class="mono"></select>
+  <input id="token-custom" class="mono" type="text" placeholder="C…" maxlength="56"
+         style="display:none;margin-top:8px">
+</div>
+
+<h2>2 · Your key</h2>
+<div class="card">
+  <div class="tabs">
+    <button class="tab active" id="tab-seed" onclick="pickTab('seed')">Secret key</button>
+    <button class="tab" id="tab-freighter" onclick="pickTab('freighter')" style="display:none">Freighter</button>
+  </div>
+  <div id="pane-seed">
+    <label for="seed">Secret key (S…)</label>
+    <input id="seed" type="password" class="mono" placeholder="S…" maxlength="56" autocomplete="off">
+    <div class="hint">Processed inside this page's WebAssembly module and never transmitted —
+      the network tab will show only ciphertext downloads.</div>
+  </div>
+  <div id="pane-freighter" style="display:none">
+    <div class="hint" style="margin:0 0 10px">Freighter signs a fixed derivation message
+      (SEP-0053); your secret key never leaves the wallet at all.</div>
+    <button class="tab" onclick="decrypt()" style="border-color:var(--accent);color:var(--accent)">Sign with Freighter</button>
+  </div>
+</div>
+
+<button class="go" id="go" onclick="decrypt()" disabled>Decrypt my statement</button>
+<div id="status"></div>
+
+<div id="result">
+  <h2>Balances <span class="muted" style="text-transform:none;letter-spacing:0">(base units)</span></h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Spendable</div><div class="v" id="bal-spend">—</div></div>
+    <div class="tile"><div class="k">Pending</div><div class="v" id="bal-pend">—</div></div>
+    <div class="tile"><div class="k">Total</div><div class="v" id="bal-total">—</div></div>
+  </div>
+
+  <h2>On-chain verification</h2>
+  <div class="card badges" id="verify"></div>
+
+  <h2>Statement <span class="muted" id="acct" style="text-transform:none;letter-spacing:0"></span></h2>
+  <div class="card" style="padding:6px 8px;overflow-x:auto">
+    <table id="stmt"></table>
+  </div>
+  <div id="warnings"></div>
+</div>
+
+<footer>
+  How this works: this page downloads your encrypted history from
+  <span class="mono" id="api-label"></span>, derives your viewing key locally
+  (WebAssembly build of Umbra's audited crypto), decrypts what your key can
+  read, and recomputes the Pedersen commitments to compare against the
+  contract's on-chain state — a mathematical proof the numbers are right.
+  · <a href="/">status</a> · <a href="https://github.com/zkCaleb-dev/umbra">source</a>
+</footer>
+
+<script src="/view/wasm_exec.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const API = new URLSearchParams(location.search).get('api') || '';
+$('api-label').textContent = API || location.host;
+
+// ===== wasm boot =====
+let wasmReady = false;
+(async () => {
+  try {
+    const go = new Go();
+    const res = await WebAssembly.instantiateStreaming(fetch('/view/umbra.wasm'), go.importObject);
+    go.run(res.instance); // resolves never; exports register synchronously
+    await new Promise(r => setTimeout(r, 50));
+    wasmReady = typeof umbraDeriveFromSeed === 'function';
+    $('wasm-pill').textContent = wasmReady ? 'crypto ready (local)' : 'crypto failed to load';
+    $('go').disabled = !wasmReady;
+  } catch (e) {
+    $('wasm-pill').textContent = 'crypto failed to load';
+    setStatus('WebAssembly module unavailable: ' + e, true);
+  }
+})();
+
+// ===== token list =====
+(async () => {
+  try {
+    const st = await fetch(API + '/v1/status').then(r => r.json());
+    const cts = (st.contracts || []).filter(c => c.kind === 'confidential-token');
+    const sel = $('token');
+    cts.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.id;
+      o.textContent = (c.label ? c.label + ' — ' : '') + c.id;
+      sel.appendChild(o);
+    });
+    const custom = document.createElement('option');
+    custom.value = '__custom';
+    custom.textContent = 'other contract…';
+    sel.appendChild(custom);
+    sel.onchange = () => $('token-custom').style.display = sel.value === '__custom' ? 'block' : 'none';
+  } catch { setStatus('could not load token list from the API', true); }
+})();
+
+// ===== freighter detection (progressive) =====
+if (window.freighterApi?.signMessage) $('tab-freighter').style.display = '';
+
+let tab = 'seed';
+function pickTab(t) {
+  tab = t;
+  $('tab-seed').classList.toggle('active', t === 'seed');
+  $('tab-freighter').classList.toggle('active', t === 'freighter');
+  $('pane-seed').style.display = t === 'seed' ? '' : 'none';
+  $('pane-freighter').style.display = t === 'freighter' ? '' : 'none';
+  $('go').style.display = t === 'seed' ? '' : 'none';
+}
+
+function setStatus(msg, err) {
+  $('status').textContent = msg;
+  $('status').className = err ? 'err' : '';
+}
+
+function tokenId() {
+  const v = $('token').value;
+  return v === '__custom' ? $('token-custom').value.trim() : v;
+}
+
+// ===== the flow =====
+async function decrypt() {
+  if (!wasmReady) return;
+  const token = tokenId();
+  if (!/^C[A-Z2-7]{55}$/.test(token)) { setStatus('pick a valid token contract (C…)', true); return; }
+  $('result').style.display = 'none';
+  $('go').disabled = true;
+  try {
+    // 1 · derive keys, locally
+    setStatus('deriving keys locally…');
+    let derived;
+    if (tab === 'seed') {
+      const seed = $('seed').value.trim();
+      if (!/^S[A-Z2-7]{55}$/.test(seed)) throw 'enter a valid secret key (S…)';
+      derived = umbraDeriveFromSeed(seed, token);
+    } else {
+      const fr = window.freighterApi;
+      const access = await fr.requestAccess();
+      const account = access?.address || access;
+      if (typeof account !== 'string' || !account.startsWith('G')) throw 'Freighter did not return an account';
+      setStatus('waiting for Freighter signature…');
+      const msg = umbraDerivationMessage(token, account);
+      const signed = await fr.signMessage(msg, {address: account});
+      let sig = signed?.signedMessage ?? signed;
+      if (sig && typeof sig === 'object' && sig.data) sig = btoa(String.fromCharCode(...new Uint8Array(sig.data)));
+      derived = umbraDeriveFromSignature(String(sig), token, account);
+    }
+    if (derived.error) throw derived.error;
+    const account = derived.account;
+    $('acct').textContent = '· ' + account;
+
+    // 2 · fetch ciphertexts
+    setStatus('downloading encrypted history…');
+    const events = [];
+    let since = 0;
+    for (;;) {
+      const page = await fetch(`${API}/v1/ct/${token}/history/${account}?since_ledger=${since}&limit=5000`)
+        .then(r => { if (!r.ok) throw 'history: ' + r.statusText; return r.json(); });
+      events.push(...(page.events || []));
+      if (page.next_ledger == null) break;
+      since = page.next_ledger;
+    }
+
+    // 3 · public on-chain record for verification
+    setStatus('fetching on-chain commitments…');
+    let onchain = '';
+    let onchainNote = '';
+    const ocResp = await fetch(`${API}/v1/ct/${token}/account/${account}`);
+    if (ocResp.ok) onchain = await ocResp.text();
+    else onchainNote = (await ocResp.text()).trim();
+
+    // 4 · decrypt + verify, locally
+    setStatus('decrypting locally…');
+    const out = umbraStatement(JSON.stringify(events), onchain);
+    if (out.error) throw out.error;
+    render(JSON.parse(out), events.length, onchainNote);
+    setStatus('');
+  } catch (e) {
+    setStatus(String(e), true);
+  } finally {
+    $('go').disabled = false;
+  }
+}
+
+const fmt = s => { try { return BigInt(s).toLocaleString('en-US'); } catch { return s; } };
+
+function render(st, eventCount, onchainNote) {
+  $('bal-spend').textContent = st.spendable != null ? fmt(st.spendable) : 'unknown';
+  $('bal-pend').textContent = st.pending != null ? fmt(st.pending) : 'unknown';
+  $('bal-total').textContent = st.total != null ? fmt(st.total) : '—';
+
+  const v = st.verify;
+  const badge = (label, verdict) => {
+    if (verdict === 'match') return `<span class="badge ok">✓ ${label}</span>`;
+    if (verdict === 'mismatch') return `<span class="badge bad">✗ ${label} — statement and chain disagree</span>`;
+    return `<span class="badge na">· ${label}: n/a</span>`;
+  };
+  if (v && v.available) {
+    $('verify').innerHTML =
+      badge('viewing key matches registration', v.pvk) +
+      badge('spendable commitment reproduced', v.spend) +
+      badge('pending commitment reproduced', v.receive) +
+      `<span class="muted" style="font-size:12px">vs chain state at ledger ${v.latest_ledger}</span>`;
+  } else {
+    $('verify').innerHTML = `<span class="badge na">verification unavailable${onchainNote ? ' — ' + onchainNote : ''}</span>`;
+  }
+
+  const rows = (st.entries || []).map(e => {
+    let amount = '<td class="num muted">·</td>';
+    if (e.amount != null) {
+      const cls = e.direction === '+' ? 'plus' : e.direction === '-' ? 'minus' : '';
+      amount = `<td class="num ${cls}">${e.direction || ''}${fmt(e.amount)}</td>`;
+    }
+    return `<tr>
+      <td class="muted" style="white-space:nowrap">${e.time || e.ledger}</td>
+      <td>${e.kind}</td><td class="muted">${e.role || ''}</td>
+      ${amount}<td class="muted">${e.note || ''}</td></tr>`;
+  }).join('');
+  $('stmt').innerHTML = '<tr><th>Time (UTC)</th><th>Kind</th><th>Role</th><th style="text-align:right">Amount</th><th>Note</th></tr>'
+    + (rows || `<tr><td colspan="5" class="muted">no history for this account on this token (${eventCount} events fetched)</td></tr>`);
+
+  $('warnings').innerHTML = (st.warnings || [])
+    .map(w => `<div class="warnbox">${w}</div>`).join('');
+  $('result').style.display = 'block';
+}
+</script>
+</body>
+</html>
