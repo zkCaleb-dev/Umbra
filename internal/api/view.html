@@ -223,8 +223,17 @@
   <div class="hint" style="margin:0 0 14px">Your wallet signs one fixed message and that
     signature derives your viewing key — <em style="font-style:normal;color:var(--moon-dim)">your
     secret key never leaves the wallet</em>, not even into this page.</div>
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+    <button class="ghost" id="connect-btn" onclick="connectWallet()">Connect Freighter</button>
+    <div id="wallet-chip" style="display:none;align-items:center;gap:9px">
+      <span class="ringdot ok"></span>
+      <span class="mono" id="wallet-addr"></span>
+      <span class="muted" id="wallet-net" style="font-size:12.5px"></span>
+      <button class="seedlink" onclick="disconnectWallet()">disconnect</button>
+    </div>
+  </div>
   <div id="no-freighter" class="hint" style="display:none;color:var(--err);margin-bottom:12px">
-    Freighter isn't available in this browser — install it at
+    Freighter isn't installed in this browser — get it at
     <a href="https://www.freighter.app" target="_blank" rel="noopener">freighter.app</a>,
     or use a disposable testnet key below.</div>
   <button class="seedlink" onclick="toggleSeed()">Use a disposable testnet key instead</button>
@@ -274,6 +283,7 @@
   <br><a href="/">indexer status</a> · <a href="https://github.com/zkCaleb-dev/umbra">source</a>
 </footer>
 
+<script src="/view/freighter-api.min.js"></script>
 <script src="/view/wasm_exec.js"></script>
 <script>
 const $ = id => document.getElementById(id);
@@ -413,10 +423,77 @@ function ensurePolling() {
 })();
 
 // ===== key input: wallet-first, seed as explicit testnet fallback =====
+// The extension does NOT inject an API; the official @stellar/freighter-api
+// bundle (vendored, /view/freighter-api.min.js) exposes window.freighterApi
+// and speaks to the extension. Flow per docs: isConnected → requestAccess
+// → getAddress, then signMessage({address}).
+let walletAddress = null;
+const fr = () => window.freighterApi;
+
+function setWallet(addr, net) {
+  walletAddress = addr;
+  $('connect-btn').style.display = 'none';
+  $('wallet-chip').style.display = 'flex';
+  $('wallet-addr').textContent = addr.slice(0, 6) + '…' + addr.slice(-6);
+  $('wallet-net').textContent = net ? '· ' + net.toLowerCase() : '';
+  if (net && net.toUpperCase() !== 'TESTNET') {
+    setStatus(`Freighter is on ${net} — switch it to Testnet to read testnet tokens`, true);
+  }
+  updateGoLabel();
+}
+
+function disconnectWallet() {
+  walletAddress = null;
+  $('wallet-chip').style.display = 'none';
+  $('connect-btn').style.display = '';
+  updateGoLabel();
+}
+
+async function walletNetwork() {
+  try { const n = await fr().getNetwork(); return n?.network || ''; } catch { return ''; }
+}
+
+async function connectWallet() {
+  try {
+    setStatus('');
+    if (!fr()) throw 'the wallet library failed to load — refresh the page';
+    const c = await fr().isConnected();
+    if (!c?.isConnected) { $('no-freighter').style.display = 'block'; return false; }
+    $('no-freighter').style.display = 'none';
+    const a = await fr().requestAccess();
+    if (a?.error) throw a.error.message || 'Freighter denied access';
+    if (!a?.address) throw 'Freighter returned no account';
+    setWallet(a.address, await walletNetwork());
+    return true;
+  } catch (e) { setStatus(String(e), true); return false; }
+}
+
+// Silent restore: if the user already authorized this site, reconnect
+// without prompting (getAddress is non-interactive per the docs).
+(async () => {
+  try {
+    if (!fr()) return;
+    const c = await fr().isConnected();
+    if (!c?.isConnected) return;
+    const a = await fr().getAddress();
+    if (a?.address) setWallet(a.address, await walletNetwork());
+  } catch { /* extension absent or quiet — the button stays */ }
+})();
+
 function toggleSeed() {
   const p = $('pane-seed');
   p.style.display = p.style.display === 'none' ? 'block' : 'none';
   if (p.style.display === 'block') $('seed').focus();
+  updateGoLabel();
+}
+
+function seedMode() {
+  return $('pane-seed').style.display !== 'none' && $('seed').value.trim() !== '';
+}
+
+function updateGoLabel() {
+  $('go').textContent = (!seedMode() && walletAddress)
+    ? 'Sign with Freighter & decrypt' : 'Decrypt my statement';
 }
 
 function setStatus(msg, err) {
@@ -477,27 +554,25 @@ async function decrypt() {
   try {
     setStatus('deriving keys locally…');
     let derived;
-    const seedOpen = $('pane-seed').style.display !== 'none';
     const seed = $('seed').value.trim().toUpperCase();
-    if (seedOpen && seed) {
+    if (seedMode()) {
       if (!/^S[A-Z2-7]{55}$/.test(seed)) throw 'enter a valid testnet secret key (S…)';
       derived = umbraDeriveFromSeed(seed, token);
     } else {
-      const fr = window.freighterApi;
-      if (!fr?.signMessage) {
-        $('no-freighter').style.display = 'block';
-        throw 'Freighter not detected — install it, or use a disposable testnet key below.';
+      if (!walletAddress && !(await connectWallet())) {
+        throw 'connect Freighter above, or use a disposable testnet key';
       }
-      setStatus('connecting to Freighter…');
-      const access = await fr.requestAccess();
-      const account = access?.address || access;
-      if (typeof account !== 'string' || !account.startsWith('G')) throw 'Freighter did not return an account';
       setStatus('waiting for the Freighter signature…');
-      const msg = umbraDerivationMessage(token, account);
-      const signed = await fr.signMessage(msg, {address: account});
+      const msg = umbraDerivationMessage(token, walletAddress);
+      const signed = await fr().signMessage(msg, {address: walletAddress});
+      if (signed?.error) throw signed.error.message || 'Freighter rejected the signature';
       let sig = signed?.signedMessage ?? signed;
-      if (sig && typeof sig === 'object' && sig.data) sig = btoa(String.fromCharCode(...new Uint8Array(sig.data)));
-      derived = umbraDeriveFromSignature(String(sig), token, account);
+      if (sig && typeof sig === 'object') {
+        // Normalize across API versions: Buffer-JSON, typed array, etc.
+        const bytes = sig.data ? new Uint8Array(sig.data) : (sig instanceof Uint8Array ? sig : null);
+        if (bytes) sig = btoa(String.fromCharCode(...bytes));
+      }
+      derived = umbraDeriveFromSignature(String(sig), token, walletAddress);
     }
     if (derived.error) throw derived.error;
     const account = derived.account;
